@@ -152,7 +152,7 @@ public final class ChatOptions {
     }
 
     private AgentBackend openAgentScope(List<AutoCloseable> resources) {
-        DataSourceProvider provider0 = db.openProvider();
+        DataSourceProvider provider0 = db.openVerifiedProvider();
         resources.add(provider0);
 
         Jdbc jdbc = new Jdbc(provider0);
@@ -162,7 +162,7 @@ public final class ChatOptions {
     }
 
     private AgentBackend openRedis(List<AutoCloseable> resources) {
-        DataSourceProvider dataSource = db.openProvider();
+        DataSourceProvider dataSource = db.openVerifiedProvider();
         resources.add(dataSource);
         RedisRuntime runtime = RedisRuntime.open(RedisConfig.of(redisUri));
         resources.add(runtime);

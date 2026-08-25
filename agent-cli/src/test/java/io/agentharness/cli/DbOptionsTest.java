@@ -49,6 +49,38 @@ class DbOptionsTest {
     }
 
     @Test
+    @DisplayName("连不上时把每个参数的来源摆出来 —— 这才看得出环境变量没送到")
+    void 诊断信息标注参数来源() {
+        DbOptions fromArgs = new DbOptions();
+        fromArgs.username = "someone";
+
+        String message = fromArgs.diagnostic("鉴权失败");
+
+        assertThat(message).contains("鉴权失败");
+        assertThat(message).contains("someone（命令行）");
+        // 连接串没给过，应当标成默认值
+        assertThat(message).contains(DbOptions.DEFAULT_JDBC_URL + "（默认值）");
+    }
+
+    @Test
+    @DisplayName("诊断信息点名 IDE 运行配置 —— 这个坑没踩过的人查半天")
+    void 诊断信息提示IDE运行配置() {
+        assertThat(new DbOptions().diagnostic("x"))
+                .contains("AGENT_DB_USER")
+                .contains("AGENT_DB_PASSWORD")
+                .contains("运行配置");
+    }
+
+    @Test
+    @DisplayName("密码不回显，只说设没设过")
+    void 诊断信息不泄露密码() {
+        DbOptions options = new DbOptions();
+        options.password = "Welcome01!";
+
+        assertThat(options.diagnostic("x")).doesNotContain("Welcome01!").contains("已设置");
+    }
+
+    @Test
     @EnabledIfEnvironmentVariable(named = "AGENT_DB_USER", matches = ".+")
     @DisplayName("命令行留空时落到环境变量")
     void 环境变量兜底() {

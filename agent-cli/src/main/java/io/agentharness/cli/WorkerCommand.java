@@ -69,7 +69,7 @@ public final class WorkerCommand implements Callable<Integer> {
     public Integer call() {
         List<AutoCloseable> resources = new ArrayList<>();
         try {
-            DataSourceProvider dataSource = db.openProvider();
+            DataSourceProvider dataSource = db.openVerifiedProvider();
             resources.add(dataSource);
             Jdbc jdbc = new Jdbc(dataSource);
 
