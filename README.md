@@ -13,7 +13,10 @@
 | [`docs/客户端协议.md`](./docs/客户端协议.md) | 协议 v1.1，**冻结文档** |
 | [`docs/G0-验收记录.md`](./docs/G0-验收记录.md) | 可复现的验收命令与结果 |
 | [`docs/富消息接入.md`](./docs/富消息接入.md) | 接入一种新富消息的四步与两个坑 |
-| [`Test/P1/`](./Test/P1/) | P1 测试用例设计稿 |
+| [`Test/P1/`](./Test/P1/) | P1 测试用例设计稿（60 个用例） |
+
+**进度在 [Issues](https://github.com/majehuang/FirstBookingAgent/issues) 上跟踪。**
+`Test/P1/` 与 `todo/` 是设计稿，issue 才是待办的真相源 —— 两处不一致时以 issue 为准。
 
 ---
 
