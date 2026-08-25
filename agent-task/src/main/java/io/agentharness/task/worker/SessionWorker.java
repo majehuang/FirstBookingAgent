@@ -68,19 +68,29 @@ public final class SessionWorker {
     private final ControlPublisher control;
     private final ColdStorageBypass coldStorage;
     private final TraceSink trace;
+    private final TurnLog turnLog;
 
     public SessionWorker(RedisRuntime runtime, MessageRepository repository, TurnEngine engine,
                          OutboxWriter outboxWriter, OutboxStream outbox,
                          ControlPublisher control, ColdStorageBypass coldStorage) {
         this(runtime, repository, engine, outboxWriter, outbox, control, coldStorage,
-                TraceSink.disabled());
+                TraceSink.disabled(), TurnLog.disabled());
     }
 
     public SessionWorker(RedisRuntime runtime, MessageRepository repository, TurnEngine engine,
                          OutboxWriter outboxWriter, OutboxStream outbox,
                          ControlPublisher control, ColdStorageBypass coldStorage,
                          TraceSink trace) {
+        this(runtime, repository, engine, outboxWriter, outbox, control, coldStorage,
+                trace, TurnLog.disabled());
+    }
+
+    public SessionWorker(RedisRuntime runtime, MessageRepository repository, TurnEngine engine,
+                         OutboxWriter outboxWriter, OutboxStream outbox,
+                         ControlPublisher control, ColdStorageBypass coldStorage,
+                         TraceSink trace, TurnLog turnLog) {
         this.trace = trace;
+        this.turnLog = turnLog;
         this.runtime = runtime;
         this.leases = new LeaseGuard(runtime);
         this.cursors = new Cursors(runtime);
@@ -195,6 +205,7 @@ public final class SessionWorker {
     private Mono<Void> runTurn(SessionRef session, ClientMessage userMessage,
                                UserInstruction instruction) {
         String replyId = userMessage.replyId();
+        TurnStats stats = TurnStats.started();
         trace.emit(TraceStage.TURN_START, session.sessionId(),
                 () -> "replyId=" + replyId
                         + " instructionId=" + instruction.instructionId()
@@ -206,15 +217,21 @@ public final class SessionWorker {
         return outbox.publish(session, userMessage)
                 .then(control.publish(session,
                         ControlFrame.idle().withTurnStarted(replyId).withPhase(TurnPhase.THINKING)))
-                .thenMany(streamTurn(session, replyId, instruction.text()))
+                .thenMany(streamTurn(session, replyId, instruction.text(), stats))
                 .then(control.publish(session,
                         ControlFrame.idle().withTurnEnded(TurnPhase.DONE)))
                 .then()
-                .onErrorResume(error -> failTurn(session, replyId, error));
+                // 顺序不能反：doOnSuccess 排在 onErrorResume 之前，
+                // 失败的那一轮才不会同时打出"完成"和"失败"两行
+                .doOnSuccess(ignored -> turnLog.turnFinished(stats.done(session, replyId,
+                        engine.engineName())))
+                .onErrorResume(error -> failTurn(session, replyId, stats, error));
     }
 
-    private Flux<ClientMessage> streamTurn(SessionRef session, String replyId, String text) {
+    private Flux<ClientMessage> streamTurn(SessionRef session, String replyId, String text,
+                                          TurnStats stats) {
         Flux<PendingMessage> drafts = engine.stream(session, text)
+                .doOnNext(event -> stats.countEvent())
                 // 追踪的是引擎吐出的原始事件，排在 EventMapper 之前 ——
                 // 映射本身就是最容易出错的一段，用映射后的结果去追踪等于自证清白
                 .doOnNext(event -> trace.emit(TraceStage.STEP_EVENT, session.sessionId(),
@@ -227,13 +244,15 @@ public final class SessionWorker {
                 // INV-7：AgentStateStore 是阻塞接口，整条流必须 offload
                 .subscribeOn(Schedulers.boundedElastic());
 
-        return outboxWriter.write(session, drafts);
+        return outboxWriter.write(session, drafts).doOnNext(message -> stats.countMessage());
     }
 
     /** turn 失败：已落库的内容保留，错误消息先落库再进流，然后正常收尾。 */
-    private Mono<Void> failTurn(SessionRef session, String replyId, Throwable error) {
+    private Mono<Void> failTurn(SessionRef session, String replyId, TurnStats stats,
+                                Throwable error) {
         String reason = rootMessage(error);
         log.warn("session {} 的 turn {} 失败：{}", session.sessionId(), replyId, reason);
+        turnLog.turnFinished(stats.failed(session, replyId, engine.engineName(), reason));
 
         PendingMessage errorMessage = new PendingMessage(replyId, "err", MessageRole.SYSTEM,
                 MessageType.ERROR, reason, Map.of(), Instant.now());
@@ -249,6 +268,50 @@ public final class SessionWorker {
                     return Mono.empty();
                 })
                 .then();
+    }
+
+    /**
+     * 一轮的计数。
+     *
+     * <p>用原子量而不是不可变累加：计数发生在 Reactor 的 doOnNext 回调里，
+     * 而那些回调可能落在不同线程上（{@code streamTurn} 整条流 offload 到 boundedElastic）。
+     */
+    private static final class TurnStats {
+
+        private final Instant startedAt;
+        private final java.util.concurrent.atomic.AtomicLong events =
+                new java.util.concurrent.atomic.AtomicLong();
+        private final java.util.concurrent.atomic.AtomicLong messages =
+                new java.util.concurrent.atomic.AtomicLong();
+
+        private TurnStats(Instant startedAt) {
+            this.startedAt = startedAt;
+        }
+
+        static TurnStats started() {
+            return new TurnStats(Instant.now());
+        }
+
+        void countEvent() {
+            events.incrementAndGet();
+        }
+
+        void countMessage() {
+            messages.incrementAndGet();
+        }
+
+        TurnLog.TurnSummary done(SessionRef session, String replyId, String engineName) {
+            Instant now = Instant.now();
+            return TurnLog.TurnSummary.done(now, session.sessionId(), replyId, engineName,
+                    events.get(), messages.get(), Duration.between(startedAt, now));
+        }
+
+        TurnLog.TurnSummary failed(SessionRef session, String replyId, String engineName,
+                                   String reason) {
+            Instant now = Instant.now();
+            return TurnLog.TurnSummary.failed(now, session.sessionId(), replyId, engineName,
+                    events.get(), messages.get(), Duration.between(startedAt, now), reason);
+        }
     }
 
     private static PendingMessage toPending(MessageDraft draft, String replyId) {
