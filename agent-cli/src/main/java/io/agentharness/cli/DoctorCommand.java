@@ -27,9 +27,6 @@ import java.util.concurrent.Callable;
         description = "检查 Redis 与 PostgreSQL 是否满足设计前提")
 public final class DoctorCommand implements Callable<Integer> {
 
-    @Option(names = {"-r", "--redis"}, description = "Redis 连接串（默认 ${DEFAULT-VALUE}）")
-    private String redisUri = "redis://localhost:6379";
-
     @Option(names = "--skip-redis", description = "跳过 Redis 检查")
     private boolean skipRedis;
 
@@ -44,8 +41,8 @@ public final class DoctorCommand implements Callable<Integer> {
         List<CheckResult> all = new ArrayList<>();
 
         if (!skipRedis) {
-            System.out.println("Redis  " + redisUri);
-            List<CheckResult> results = new RedisProbe(redisUri).run();
+            System.out.println("Redis  " + RedisEndpoint.describe());
+            List<CheckResult> results = new RedisProbe(RedisEndpoint.resolve()).run();
             results.forEach(r -> System.out.println(r.format()));
             all.addAll(results);
             System.out.println();

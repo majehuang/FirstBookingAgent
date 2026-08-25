@@ -11,7 +11,9 @@ import io.agentharness.protocol.SessionRef;
 import io.agentharness.protocol.UserInstruction;
 import io.agentharness.store.message.MessageRepository;
 import io.agentharness.tui.port.AgentBackend;
+import io.agentharness.tui.port.Diagnostics;
 import io.agentharness.tui.port.HistorySource;
+import io.agentharness.tui.port.TraceControl;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -31,18 +33,40 @@ public final class RedisBackend implements AgentBackend, HistorySource {
     private final MessageSubscriber subscriber;
     private final MessageRepository repository;
     private final ClientCapabilities capabilities;
+    private final String label;
+    private final Diagnostics diagnostics;
+    private final TraceControl traceControl;
 
     public RedisBackend(InstructionPublisher publisher, MessageSubscriber subscriber,
                         MessageRepository repository, ClientCapabilities capabilities) {
+        this(publisher, subscriber, repository, capabilities, "redis", null, null);
+    }
+
+    public RedisBackend(InstructionPublisher publisher, MessageSubscriber subscriber,
+                        MessageRepository repository, ClientCapabilities capabilities,
+                        String label, Diagnostics diagnostics, TraceControl traceControl) {
         this.publisher = publisher;
         this.subscriber = subscriber;
         this.repository = repository;
         this.capabilities = capabilities == null ? ClientCapabilities.full() : capabilities;
+        this.label = label == null ? "redis" : label;
+        this.diagnostics = diagnostics;
+        this.traceControl = traceControl;
     }
 
     @Override
     public String name() {
-        return "redis";
+        return label;
+    }
+
+    @Override
+    public Optional<Diagnostics> diagnostics() {
+        return Optional.ofNullable(diagnostics);
+    }
+
+    @Override
+    public Optional<TraceControl> traceControl() {
+        return Optional.ofNullable(traceControl);
     }
 
     @Override

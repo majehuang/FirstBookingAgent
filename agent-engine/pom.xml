@@ -23,11 +23,6 @@
       <artifactId>agent-store</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.agentharness</groupId>
-      <artifactId>agent-tui</artifactId>
-    </dependency>
-
-    <dependency>
       <groupId>io.agentscope</groupId>
       <artifactId>agentscope-harness</artifactId>
     </dependency>
