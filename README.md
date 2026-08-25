@@ -582,6 +582,17 @@ export AGENT_API_KEY=sk-...
 
 只想验分布式链路、不想调模型时用 `--engine scripted`，它不需要任何 Key。
 
+> ⚠️ **`--backend redis` 时，模型参数要配在 worker 上，不是客户端。**
+> 远端模式下客户端只负责收发，推理全在 worker 进程里 ——
+> `--engine`／`--provider`／`--model`／`--base-url`／`AGENT_API_KEY` 配在客户端一律无效。
+> 症状是"模型好像没换"，而人极难联想到是配错了进程，所以客户端会在启动时点名这些参数。
+>
+> ```bash
+> ./bin/agent worker --provider openai --base-url https://api.kimi.com/coding/ \
+>     --model kimi-for-coding --tools hotel     # 模型配这里
+> ./bin/agent --backend redis                   # 客户端什么模型参数都不用给
+> ```
+
 ## 环境
 
 | 依赖 | 版本 |

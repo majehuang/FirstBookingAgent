@@ -58,6 +58,32 @@ class EngineOptionsTest {
     }
 
     @Test
+    @DisplayName("远端模式下客户端的引擎参数不生效，要能提前说出来")
+    void 列出远端模式下失效的引擎参数() {
+        EngineOptions defaults = new EngineOptions();
+
+        // 什么都没显式指定时不该提示 —— 否则每次启动都弹，很快就没人看了
+        assertThat(defaults.optionsIgnoredInRemoteMode()).isEmpty();
+    }
+
+    @Test
+    void 显式指定的引擎参数会被列出() throws Exception {
+        EngineOptions options = new EngineOptions();
+        set(options, "model", "kimi-for-coding");
+        set(options, "provider", EngineConfig.Provider.OPENAI);
+        set(options, "baseUrl", "https://api.kimi.com/coding/");
+
+        assertThat(options.optionsIgnoredInRemoteMode())
+                .containsExactlyInAnyOrder("--provider", "--model", "--base-url");
+    }
+
+    private static void set(EngineOptions target, String field, Object value) throws Exception {
+        java.lang.reflect.Field f = EngineOptions.class.getDeclaredField(field);
+        f.setAccessible(true);
+        f.set(target, value);
+    }
+
+    @Test
     void 已设置的地址原样带出() {
         EngineConfig withUrl = new EngineConfig(EngineConfig.Provider.OPENAI, "kimi-for-coding",
                 null, "https://api.kimi.com/coding/", null, 20, null, true, true);

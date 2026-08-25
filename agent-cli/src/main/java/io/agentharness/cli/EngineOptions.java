@@ -53,6 +53,7 @@ public final class EngineOptions {
     @Option(names = "--max-iters", description = "单轮最大推理迭代数（默认 ${DEFAULT-VALUE}）")
     private int maxIters = 20;
 
+
     @Option(names = "--system-prompt", description = "系统提示词")
     private String systemPrompt;
 
@@ -66,6 +67,41 @@ public final class EngineOptions {
     @Option(names = "--enable-filesystem",
             description = "打开文件系统工具（读写/列目录/glob）。实测可经 ../ 穿越到宿主机根目录 —— 默认关闭")
     private boolean enableFilesystem;
+
+    /**
+     * 列出被显式指定、但在 {@code --backend redis} 下<b>不会生效</b>的引擎参数。
+     *
+     * <p>远端模式下客户端根本不调模型，推理全在 worker 里 ——
+     * 这些参数配在客户端上完全没有作用，而症状是"模型好像没换"，
+     * 极难联想到是配错了进程。
+     */
+    java.util.List<String> optionsIgnoredInRemoteMode() {
+        java.util.List<String> ignored = new java.util.ArrayList<>();
+        if (kind != Kind.AGENTSCOPE) {
+            ignored.add("--engine");
+        }
+        if (tools != Tools.NONE) {
+            ignored.add("--tools");
+        }
+        if (provider != EngineConfig.Provider.AUTO) {
+            ignored.add("--provider");
+        }
+        if (!"qwen-max".equals(model)) {
+            ignored.add("--model");
+        }
+        if (baseUrl != null && !baseUrl.isBlank()) {
+            ignored.add("--base-url");
+        }
+        if (maxIters != DEFAULT_MAX_ITERS) {
+            ignored.add("--max-iters");
+        }
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            ignored.add("--system-prompt");
+        }
+        return java.util.List.copyOf(ignored);
+    }
+
+    private static final int DEFAULT_MAX_ITERS = 20;
 
     String modelName() {
         return kind == Kind.SCRIPTED ? "scripted" : model;

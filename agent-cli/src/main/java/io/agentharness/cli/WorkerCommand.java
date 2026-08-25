@@ -45,8 +45,22 @@ public final class WorkerCommand implements Callable<Integer> {
     @Option(names = {"-r", "--redis"}, description = "Redis 连接串（默认 ${DEFAULT-VALUE}）")
     private String redisUri = "redis://localhost:6379";
 
+    /**
+     * 消费者名。
+     *
+     * <p><b>同时存活的实例绝不能重名</b>：消费组按消费者名分配令牌，
+     * 重名的两个进程会互相抢消息、PEL 也会混在一起，症状是
+     * "消息有时没人处理"或"处理了两次"，而现场看不出有第二个进程。
+     *
+     * <p>想过在启动时自动探测重名，但 {@code XINFO CONSUMERS} 的 {@code idle}
+     * 在目标 Redis 上反映的是"上次成功取到消息"而非"上次发起请求" ——
+     * 一个活着但闲着的实例照样显示 idle 很大，据此判活会漏报。
+     * 可靠的做法要靠心跳键，那属于 P3（连同 XAUTOCLAIM 与死 consumer 清理一起做）。
+     * 在那之前，本机多开时请显式 {@code --consumer} 区分。
+     */
     @Option(names = "--consumer",
-            description = "消费者名，同时存活的实例不能重名（默认取主机名）")
+            description = "消费者名，同时存活的实例不能重名（默认取主机名）。"
+                    + "本机多开时务必显式区分")
     private String consumerName = defaultConsumerName();
 
     @Option(names = "--concurrency",

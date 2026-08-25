@@ -164,6 +164,15 @@ public final class ChatOptions {
     }
 
     private AgentBackend openRedis(List<AutoCloseable> resources) {
+        // 远端模式下推理在 worker 里，引擎参数配在这边一点用都没有。
+        // 症状是"模型好像没换"，而人极难联想到是配错了进程
+        List<String> ignored = engineOptions.optionsIgnoredInRemoteMode();
+        if (!ignored.isEmpty()) {
+            System.err.println("· " + String.join("、", ignored)
+                    + " 在 --backend redis 下不生效：推理由 worker 进程执行。"
+                    + "这些参数要加在 agent worker 上。");
+        }
+
         DataSourceProvider dataSource = db.openVerifiedProvider();
         resources.add(dataSource);
         RedisRuntime runtime = RedisRuntime.open(RedisConfig.of(redisUri));
