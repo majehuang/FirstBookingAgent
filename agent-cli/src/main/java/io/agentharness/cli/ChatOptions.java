@@ -73,6 +73,12 @@ public final class ChatOptions {
     @Option(names = "--plain", description = "强制逐行模式，不使用交互式终端")
     private boolean plain;
 
+    @Option(names = "--trace",
+            description = "把本进程经手的链路环节打到 stderr（写 inbox）。"
+                    + "逐行模式默认开启，交互式终端下需显式指定。"
+                    + "worker 侧的五个环节用 agent worker --trace")
+    private boolean trace;
+
     @Option(names = {"-r", "--redis"}, description = "Redis 连接串（默认 ${DEFAULT-VALUE}）")
     private String redisUri = "redis://localhost:6379";
 
@@ -120,7 +126,23 @@ public final class ChatOptions {
         }
     }
 
+    /**
+     * 逐行模式本就是排查与验收场景，追踪跟着它走；交互式终端下要显式开。
+     *
+     * <p>{@code --trace} 与 worker 侧同名同义，两个进程一套用法 ——
+     * 只在一边有这个开关的话，另一边会直接报未知选项。
+     */
+    private boolean tracing() {
+        return plain || trace;
+    }
+
     private AgentBackend openBackend(List<AutoCloseable> resources) {
+        // 会话进程只经手"写 inbox"这一环，而它只存在于 Redis 后端。
+        // 不提示的话，--trace 配上别的后端就是一片安静，看起来像追踪坏了
+        if (tracing() && backend != Backend.REDIS) {
+            System.err.println("· --trace 在 " + backend + " 后端下没有可追踪的环节："
+                    + "写 inbox 只发生在 redis 后端。worker 侧的五个环节用 agent worker --trace");
+        }
         return switch (backend) {
             case LOOPBACK -> new LoopbackBackend(
                     Duration.ofMillis(tokenDelayMs), Duration.ofMillis(toolDelayMs));
@@ -150,9 +172,8 @@ public final class ChatOptions {
                 ? ClientCapabilities.defaults()
                 : ClientCapabilities.full();
 
-        // 逐行模式本就是排查与验收场景，追踪跟着它走，不再单开一个开关。
         // 打到 stderr 而非 stdout —— stdout 是可 diff 的验收产物，掺进追踪就没法比对了
-        TraceSink traceSink = plain ? TraceSink.toStderr("tui") : TraceSink.disabled();
+        TraceSink traceSink = tracing() ? TraceSink.toStderr("tui") : TraceSink.disabled();
 
         return new RedisBackend(
                 new RedisInstructionPublisher(runtime, repository, traceSink),

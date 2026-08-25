@@ -219,12 +219,16 @@ printf '你好\n/status\n/quit\n' | ./bin/agent --backend redis --db-user admin 
 | 控制帧进入 ctrl-stream（带 ctrlId 水位） | worker |
 | 消息进入 outbox（原始载荷） | worker |
 
-会话侧由 `--plain` 隐含打开，worker 侧用 `--trace`：
+两个进程**同一个开关**：`--trace`。会话侧的逐行模式（`--plain`，管道下自动降级也算）
+会隐含打开它，交互式终端下要显式指定。
 
 ```bash
 ./bin/agent worker --engine scripted --trace --db-user admin      # 终端 A
-printf '你好\n/quit\n' | ./bin/agent --backend redis --plain --db-user admin  # 终端 B
+./bin/agent --backend redis --trace --db-user admin               # 终端 B
 ```
+
+会话进程只经手「写 inbox」这一环，而它只存在于 redis 后端 ——
+`--trace` 配上 loopback／agentscope 会给出提示而不是一片安静。
 
 两个终端并排，按 sessionId 对齐成一条完整链路：
 
