@@ -75,6 +75,18 @@ class EventTraceTest {
     }
 
     @Test
+    @DisplayName("入参分片与真正的工具调用要分得开 —— 混在一起像被调了十几次")
+    void 入参分片单独标注() {
+        String fragment = EventTrace.describe(reasoning(
+                new ToolUseBlock("call-9", EventMapper.FRAGMENT_TOOL_NAME, Map.of())));
+        String real = EventTrace.describe(reasoning(
+                new ToolUseBlock("call-9", "search_hotels", Map.of())));
+
+        assertThat(fragment).contains("入参分片").doesNotContain("tool=");
+        assertThat(real).contains("tool=search_hotels");
+    }
+
+    @Test
     void 无消息体的事件只打类型() {
         assertThat(EventTrace.describe(new Event(EventType.AGENT_RESULT, null, false)))
                 .isEqualTo("AGENT_RESULT");

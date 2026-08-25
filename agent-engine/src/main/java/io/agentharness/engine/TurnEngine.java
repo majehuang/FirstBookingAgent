@@ -42,6 +42,17 @@ public interface TurnEngine extends AutoCloseable {
     }
 
     /**
+     * 这个引擎对外怎么称呼自己。
+     *
+     * <p>用于链路追踪。看着一段追踪判断"到底接没接上模型"，
+     * 原本只能靠 blockId 的 {@code scripted-N} 前缀去认 —— 太隐晦，
+     * 实际排查时没人会往那儿想。
+     */
+    default String engineName() {
+        return getClass().getSimpleName();
+    }
+
+    /**
      * 打断当前推理。
      *
      * <p>只对<b>本进程内</b>正在跑的 turn 有效。跨节点打断要靠把 IMMEDIATE 指令写进 inbox，

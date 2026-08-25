@@ -86,6 +86,11 @@ public final class ScriptedTurnEngine implements TurnEngine {
     }
 
     @Override
+    public String engineName() {
+        return "scripted（不调模型，只回显输入）";
+    }
+
+    @Override
     public Flux<Event> stream(SessionRef session, String text) {
         calls.add(new Call(session.userId(), session.sessionId(), text));
         String messageId = "scripted-" + messageCounter.incrementAndGet();

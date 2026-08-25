@@ -258,6 +258,13 @@ cat tui.trace worker.trace | grep -v SLF4J | sort
 [11:05:40.264] worker  ⇄ ctrl   s-1  {"ctrlId":"1787627140262-0","phase":"DONE",…,"turnActive":false}
 ```
 
+`▶ turn` 那行带着 **engine=**，一眼能看出接没接上模型：
+
+```
+▶ turn  s-local  replyId=r-c973ceb6-a91 … engine=kimi-for-coding          ← 真模型
+▶ turn  s-local  replyId=r-21843ead-64f … engine=scripted（不调模型，只回显输入）
+```
+
 三点值得留意：
 
 - **追踪走 stderr，不走 stdout。** 逐行模式的 stdout 是可 diff 的验收产物，

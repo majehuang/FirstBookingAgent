@@ -51,7 +51,7 @@ public final class EventMapper {
      * <p>装配处已经关掉了入参分片流，这里再挡一道：分片块的入参是不完整的 JSON，
      * 一旦漏进消息表，用户会看到同一个工具被调了十几次。
      */
-    private static final String FRAGMENT_TOOL_NAME = "__fragment__";
+    static final String FRAGMENT_TOOL_NAME = "__fragment__";
 
     private EventMapper() {
     }

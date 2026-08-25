@@ -47,11 +47,19 @@ public final class AgentScopeEngine implements TurnEngine {
     private final HarnessAgent agent;
     private final StreamOptions streamOptions;
     private final ToolBundle tools;
+    private final String modelName;
 
-    private AgentScopeEngine(HarnessAgent agent, StreamOptions streamOptions, ToolBundle tools) {
+    private AgentScopeEngine(HarnessAgent agent, StreamOptions streamOptions, ToolBundle tools,
+                             String modelName) {
         this.agent = agent;
         this.streamOptions = streamOptions;
         this.tools = tools;
+        this.modelName = modelName;
+    }
+
+    @Override
+    public String engineName() {
+        return modelName;
     }
 
     public static AgentScopeEngine create(EngineConfig config, Jdbc jdbc) {
@@ -93,7 +101,8 @@ public final class AgentScopeEngine implements TurnEngine {
             builder.middlewares(tools.middlewares());
         }
 
-        return new AgentScopeEngine(builder.build(), defaultStreamOptions(), tools);
+        return new AgentScopeEngine(builder.build(), defaultStreamOptions(), tools,
+                config.modelName());
     }
 
     /**

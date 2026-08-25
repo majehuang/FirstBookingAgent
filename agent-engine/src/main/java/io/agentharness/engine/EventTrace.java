@@ -46,7 +46,11 @@ public final class EventTrace {
         return switch (block) {
             case TextBlock text -> "text=" + quote(text.getText());
             case ThinkingBlock thinking -> "thinking=" + quote(thinking.getThinking());
-            case ToolUseBlock use -> "tool=" + use.getName() + " id=" + use.getId();
+            // 入参分片必须和真正的工具调用区分开：它们同 id、连着刷十几条，
+            // 混在一起看就像同一个工具被调了十几次 —— 这个误读真的造成过一次 bug
+            case ToolUseBlock use -> EventMapper.FRAGMENT_TOOL_NAME.equals(use.getName())
+                    ? "入参分片 id=" + use.getId()
+                    : "tool=" + use.getName() + " id=" + use.getId();
             case ToolResultBlock result -> "result=" + result.getName() + " id=" + result.getId();
             case null -> "null";
             default -> block.getClass().getSimpleName();

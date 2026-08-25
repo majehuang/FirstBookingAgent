@@ -198,7 +198,10 @@ public final class SessionWorker {
         trace.emit(TraceStage.TURN_START, session.sessionId(),
                 () -> "replyId=" + replyId
                         + " instructionId=" + instruction.instructionId()
-                        + " seq=" + userMessage.msgSeq());
+                        + " seq=" + userMessage.msgSeq()
+                        // 带上引擎名：判断"到底接没接上模型"是看追踪时最常问的一句，
+                        // 原本只能靠 blockId 的 scripted-N 前缀去认，太隐晦
+                        + " engine=" + engine.engineName());
 
         return outbox.publish(session, userMessage)
                 .then(control.publish(session,
