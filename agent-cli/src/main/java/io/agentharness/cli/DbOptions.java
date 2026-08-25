@@ -8,8 +8,9 @@ import picocli.CommandLine.Option;
 /**
  * 数据库连接参数。多个子命令共用，用 picocli 的 mixin 混入。
  *
- * <p>三个参数都能从环境变量读，命令行给了则命令行优先：
- * {@code AGENT_JDBC_URL} / {@code AGENT_DB_USER} / {@code AGENT_DB_PASSWORD}。
+ * <p>四个参数都能从环境变量读，命令行给了则命令行优先：
+ * {@code AGENT_JDBC_URL} / {@code AGENT_DB_USER} / {@code AGENT_DB_PASSWORD} /
+ * {@code AGENT_DB_POOL_SIZE}。
  *
  * <p>密码<b>只能</b>走环境变量或交互输入，写在命令行上会进 shell 历史、
  * 也会出现在 {@code ps} 的输出里。另外两个走环境变量纯粹是为了少敲字 ——
@@ -20,20 +21,29 @@ public final class DbOptions {
     static final String DEFAULT_JDBC_URL = "jdbc:postgresql://localhost:5432/agent";
     static final String DEFAULT_USER = "agent";
 
+    /*
+     * 这两个的默认值刻意不写成 picocli 的 defaultValue：解析优先级由 resolveXxx() 手写，
+     * 因为 diagnostic() 要区分"命令行给的"和"环境变量给的"来报来源，
+     * 而 defaultValue 插值之后这两者在字段上长得一模一样。
+     *
+     * 代价是 ${DEFAULT-VALUE} 会渲染成 null，所以帮助里把默认值直接写出来。
+     */
+
     @Option(names = "--jdbc-url",
             description = "PostgreSQL 连接串，留空则读环境变量 AGENT_JDBC_URL，"
-                    + "再没有就用 ${DEFAULT-VALUE}")
+                    + "再没有就用 jdbc:postgresql://localhost:5432/agent")
     String jdbcUrl;
 
     @Option(names = "--db-user",
-            description = "数据库用户，留空则读环境变量 AGENT_DB_USER，再没有就用 ${DEFAULT-VALUE}")
+            description = "数据库用户，留空则读环境变量 AGENT_DB_USER，再没有就用 agent")
     String username;
 
     @Option(names = "--db-password", description = "数据库密码，留空则读环境变量 AGENT_DB_PASSWORD")
     String password;
 
-    @Option(names = "--db-pool-size", description = "连接池上限（默认 ${DEFAULT-VALUE}）")
-    int poolSize = 10;
+    @Option(names = "--db-pool-size", defaultValue = "${env:AGENT_DB_POOL_SIZE:-10}",
+            description = "连接池上限（默认 ${DEFAULT-VALUE}，env AGENT_DB_POOL_SIZE）")
+    int poolSize;
 
     /**
      * 建一个数据源。

@@ -9,7 +9,9 @@ import io.agentharness.tui.input.InputAction;
 import io.agentharness.tui.input.InputParser;
 import io.agentharness.tui.input.SlashCommandHandler;
 import io.agentharness.tui.port.AgentBackend;
+import io.agentharness.tui.port.Diagnostics;
 import io.agentharness.tui.port.HistorySource;
+import io.agentharness.tui.port.TraceControl;
 import io.agentharness.tui.render.Banner;
 import io.agentharness.tui.render.LineKind;
 import io.agentharness.tui.render.RenderedLine;
@@ -78,7 +80,7 @@ public final class TuiApp implements AutoCloseable {
 
     /** 跑到用户退出为止。返回进程退出码。 */
     public int run() {
-        ui.printLines(Banner.welcome(config.session(), backend.name()));
+        ui.printLines(Banner.welcome(config.session(), backend.name(), config.notes()));
         subscribeStreams(config.session());
 
         while (true) {
@@ -150,9 +152,59 @@ public final class TuiApp implements AutoCloseable {
                 ui.clearScreen();
                 yield false;
             }
+            case CommandOutcome.Trace trace -> {
+                runTrace(trace.action());
+                yield false;
+            }
+            case CommandOutcome.Diagnose diagnose -> {
+                runDiagnose(diagnose.kind());
+                yield false;
+            }
             case CommandOutcome.Nothing ignored -> false;
             case CommandOutcome.Quit ignored -> true;
         };
+    }
+
+    /** {@code /trace}：开、关，或只报状态。 */
+    private void runTrace(CommandOutcome.Trace.Action action) {
+        Optional<TraceControl> control = backend.traceControl();
+        if (control.isEmpty()) {
+            ui.printLines(List.of(RenderedLine.hint("当前后端没有可开关的追踪落点")));
+            return;
+        }
+        boolean on = switch (action) {
+            case ON -> control.get().setEnabled(true);
+            case OFF -> control.get().setEnabled(false);
+            case SHOW -> control.get().enabled();
+        };
+        String verb = action == CommandOutcome.Trace.Action.SHOW ? "当前" : "已";
+        ui.printLines(List.of(RenderedLine.hint(
+                "链路追踪 " + verb + (on ? "开启 —— 输出在 stderr，与 worker 侧按 sessionId 对齐" : "关闭"))));
+    }
+
+    /**
+     * {@code /doctor} 与 {@code /keys}。
+     *
+     * <p>自检会阻塞若干秒（要连 Redis 和 PG），所以先打一行"正在自检"——
+     * 不打的话终端会静止几秒，看起来像卡死了。
+     */
+    private void runDiagnose(CommandOutcome.Diagnose.Kind kind) {
+        Optional<Diagnostics> diagnostics = backend.diagnostics();
+        if (diagnostics.isEmpty()) {
+            ui.printLines(List.of(RenderedLine.hint("当前后端没有诊断能力")));
+            return;
+        }
+        try {
+            switch (kind) {
+                case KEYS -> ui.printLines(diagnostics.get().keys(state.get().session()));
+                case DOCTOR -> {
+                    ui.printLines(List.of(RenderedLine.hint("正在自检，需要几秒…")));
+                    ui.printLines(diagnostics.get().doctor());
+                }
+            }
+        } catch (RuntimeException e) {
+            ui.printLines(List.of(RenderedLine.of(LineKind.ERROR, "✗ 诊断失败：" + rootMessage(e))));
+        }
     }
 
     /**

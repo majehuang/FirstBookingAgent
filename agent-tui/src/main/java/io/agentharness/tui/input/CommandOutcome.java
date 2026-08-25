@@ -35,6 +35,25 @@ public sealed interface CommandOutcome {
     record ClearScreen() implements CommandOutcome {
     }
 
+    /** 开关追踪，或只报当前状态。 */
+    record Trace(Action action) implements CommandOutcome {
+
+        public enum Action {
+            ON, OFF, SHOW
+        }
+    }
+
+    /** 跑一次诊断。具体内容由 {@link io.agentharness.tui.port.Diagnostics} 提供。 */
+    record Diagnose(Kind kind) implements CommandOutcome {
+
+        public enum Kind {
+            /** Redis 与 PG 自检，会阻塞若干秒。 */
+            DOCTOR,
+            /** 当前会话的键表，纯计算。 */
+            KEYS
+        }
+    }
+
     record Quit() implements CommandOutcome {
     }
 

@@ -4,23 +4,13 @@ import io.agentharness.engine.TurnEngine;
 import io.agentharness.redis.RedisConfig;
 import io.agentharness.redis.RedisRuntime;
 import io.agentharness.store.datasource.DataSourceProvider;
-import io.agentharness.store.eventlog.PostgresEventLogRepository;
 import io.agentharness.store.jdbc.Jdbc;
-import io.agentharness.store.message.MessageRepository;
 import io.agentharness.store.message.PostgresMessageRepository;
-import io.agentharness.task.coldstore.ColdStorageBypass;
-import io.agentharness.task.dispatch.ReadyDispatcher;
-import io.agentharness.task.outbox.OutboxStream;
-import io.agentharness.task.outbox.OutboxWriter;
-import io.agentharness.task.worker.ControlPublisher;
-import io.agentharness.task.worker.SessionWorker;
 import io.agentharness.trace.TraceSink;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -38,13 +28,6 @@ import java.util.concurrent.CountDownLatch;
         description = "Worker 模块：消费 ready、抢执行权、抽干 inbox、写 outbox")
 public final class WorkerCommand implements Callable<Integer> {
 
-    /** 与 {@code OutboxStream} / {@code ControlPublisher} 的默认值一致，此处只是为了能传 sink。 */
-    private static final long DEFAULT_OUTBOX_MAX_LEN = 10_000L;
-    private static final java.time.Duration CONTROL_TTL = java.time.Duration.ofHours(12);
-
-    @Option(names = {"-r", "--redis"}, description = "Redis 连接串（默认 ${DEFAULT-VALUE}）")
-    private String redisUri = "redis://localhost:6379";
-
     /**
      * 消费者名。
      *
@@ -61,11 +44,11 @@ public final class WorkerCommand implements Callable<Integer> {
     @Option(names = "--consumer",
             description = "消费者名，同时存活的实例不能重名（默认取主机名）。"
                     + "本机多开时务必显式区分")
-    private String consumerName = defaultConsumerName();
+    private String consumerName = WorkerRuntime.standaloneConsumerName();
 
     @Option(names = "--concurrency",
             description = "同时在飞的 session 数上限（默认 ${DEFAULT-VALUE}）")
-    private int concurrency = 8;
+    private int concurrency = WorkerRuntime.STANDALONE_CONCURRENCY;
 
     @Option(names = "--trace",
             description = "把链路各环节打到 stderr：抢到 ready、turn 启动、每个 step 事件、"
@@ -87,6 +70,7 @@ public final class WorkerCommand implements Callable<Integer> {
             resources.add(dataSource);
             Jdbc jdbc = new Jdbc(dataSource);
 
+            String redisUri = RedisEndpoint.resolve();
             RedisRuntime runtime = RedisRuntime.open(RedisConfig.of(redisUri));
             resources.add(runtime);
 
@@ -97,29 +81,15 @@ public final class WorkerCommand implements Callable<Integer> {
             // 客户端那一环（写 inbox）在会话进程里，靠 sessionId 对齐
             TraceSink traceSink = trace ? TraceSink.toStderr("worker") : TraceSink.disabled();
 
-            MessageRepository repository = new PostgresMessageRepository(jdbc);
-            OutboxStream outbox = new OutboxStream(runtime, DEFAULT_OUTBOX_MAX_LEN, traceSink);
+            WorkerRuntime worker = WorkerRuntime.standalone(
+                    runtime, jdbc, new PostgresMessageRepository(jdbc), engine, traceSink,
+                    consumerName, concurrency);
+            resources.add(worker);
 
-            SessionWorker worker = new SessionWorker(
-                    runtime,
-                    repository,
-                    engine,
-                    new OutboxWriter(repository, outbox),
-                    outbox,
-                    new ControlPublisher(runtime, CONTROL_TTL, traceSink),
-                    new ColdStorageBypass(new PostgresEventLogRepository(jdbc)),
-                    traceSink);
-
-            ReadyDispatcher dispatcher = new ReadyDispatcher(
-                    runtime, worker, consumerName, concurrency, java.time.Duration.ofMillis(50));
-            resources.add(dispatcher);
-
-            dispatcher.start().block();
-
-            System.out.println("worker 已就绪  consumer=" + consumerName
+            System.out.println("worker 已就绪  consumer=" + worker.consumerName()
                     + "  引擎=" + engine.engineName()
-                    + "  并发=" + concurrency);
-            System.out.println("Redis " + redisUri + "  ·  " + db.resolveJdbcUrl());
+                    + "  并发=" + worker.concurrency());
+            System.out.println("Redis " + RedisEndpoint.describe() + "  ·  " + db.resolveJdbcUrl());
             if (trace) {
                 System.out.println("链路追踪已开启，输出在 stderr。");
             }
@@ -127,10 +97,10 @@ public final class WorkerCommand implements Callable<Integer> {
             // 本终端看起来就像一个等着你说话的提示符 —— 敲进来的字会被 shell 回显，
             // 于是"发了消息却没有回复"，而两边的日志都干干净净
             System.out.println();
-            System.out.println("本终端不接受输入。另开一个终端进会话：");
-            System.out.println("    ./bin/agent --backend redis"
-                    + (trace ? " --trace" : ""));
+            System.out.println("本终端不接受输入，每完成一轮打一行。另开一个终端进会话：");
+            System.out.println("    ./bin/agent --sole" + (trace ? " --trace" : ""));
             System.out.println("按 Ctrl+C 停止 worker。");
+            System.out.println();
 
             park();
             return 0;
@@ -150,20 +120,6 @@ public final class WorkerCommand implements Callable<Integer> {
             stopped.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * 默认取主机名。
-     *
-     * <p>刻意<b>不</b>加时间戳后缀：同时存活的实例本就不会重名，
-     * 加了只会让消费组里的死 consumer 堆积得更快（P3 要清理它们）。
-     */
-    private static String defaultConsumerName() {
-        try {
-            return InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException e) {
-            return "worker-" + ProcessHandle.current().pid();
         }
     }
 

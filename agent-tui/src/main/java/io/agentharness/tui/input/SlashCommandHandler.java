@@ -36,7 +36,27 @@ public final class SlashCommandHandler {
             case SESSION -> command.argument().isBlank()
                     ? CommandOutcome.Print.of(RenderedLine.hint("用法：/session <sessionId>"))
                     : switchTo(command.argument().strip(), state, false);
+            case TRACE -> trace(command.argument());
+            case DOCTOR -> new CommandOutcome.Diagnose(CommandOutcome.Diagnose.Kind.DOCTOR);
+            case KEYS -> new CommandOutcome.Diagnose(CommandOutcome.Diagnose.Kind.KEYS);
             case QUIT -> new CommandOutcome.Quit();
+        };
+    }
+
+    /**
+     * {@code /trace [on|off]}。
+     *
+     * <p>不带参数<b>不做切换而是报状态</b>。切换看起来更省事，但追踪是个不可见的开关 ——
+     * 敲第二次以为是重复确认、实际上把它关掉了，而现场表现是"追踪时有时无"。
+     */
+    private CommandOutcome trace(String argument) {
+        String value = argument.strip().toLowerCase(java.util.Locale.ROOT);
+        return switch (value) {
+            case "" -> new CommandOutcome.Trace(CommandOutcome.Trace.Action.SHOW);
+            case "on", "开" -> new CommandOutcome.Trace(CommandOutcome.Trace.Action.ON);
+            case "off", "关" -> new CommandOutcome.Trace(CommandOutcome.Trace.Action.OFF);
+            default -> CommandOutcome.Print.of(
+                    RenderedLine.hint("用法：/trace [on|off]，不带参数则报当前状态"));
         };
     }
 

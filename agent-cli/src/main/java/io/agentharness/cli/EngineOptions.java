@@ -35,30 +35,48 @@ public final class EngineOptions {
         HOTEL
     }
 
-    @Option(names = "--engine", description = "引擎：${COMPLETION-CANDIDATES}（默认 ${DEFAULT-VALUE}）")
-    private Kind kind = Kind.AGENTSCOPE;
+    /*
+     * 每个参数都带一个环境变量兜底，顺序是 命令行 > 环境变量 > 默认值。
+     *
+     * 理由是默认形态下同一套引擎参数要喂给两个地方：会话进程里的内嵌 worker，
+     * 以及可能另起的 agent worker。两条命令上各写一遍、然后指望它们一直一致，
+     * 是这类系统里最常见的一种"配置漂移"—— 症状是"换了模型只有一半生效"。
+     *
+     * 用 picocli 的 ${env:VAR:-默认} 插值而不是自己读：这样 --help 里
+     * ${DEFAULT-VALUE} 显示的是解析之后的真实默认，而不是代码里写死的那个。
+     */
 
-    @Option(names = "--tools", description = "业务工具：${COMPLETION-CANDIDATES}（默认 ${DEFAULT-VALUE}）")
-    private Tools tools = Tools.NONE;
+    @Option(names = "--engine", defaultValue = "${env:AGENT_ENGINE:-AGENTSCOPE}",
+            description = "引擎：${COMPLETION-CANDIDATES}（默认 ${DEFAULT-VALUE}，env AGENT_ENGINE）")
+    private Kind kind;
 
-    @Option(names = "--provider", description = "模型提供者：${COMPLETION-CANDIDATES}（默认 ${DEFAULT-VALUE}）")
-    private EngineConfig.Provider provider = EngineConfig.Provider.AUTO;
+    @Option(names = "--tools", defaultValue = "${env:AGENT_TOOLS:-NONE}",
+            description = "业务工具：${COMPLETION-CANDIDATES}（默认 ${DEFAULT-VALUE}，env AGENT_TOOLS）")
+    private Tools tools;
 
-    @Option(names = "--model", description = "模型名（默认 ${DEFAULT-VALUE}）")
-    private String model = "qwen-max";
+    @Option(names = "--provider", defaultValue = "${env:AGENT_PROVIDER:-AUTO}",
+            description = "模型提供者：${COMPLETION-CANDIDATES}（默认 ${DEFAULT-VALUE}，env AGENT_PROVIDER）")
+    private EngineConfig.Provider provider;
 
-    @Option(names = "--base-url", description = "模型服务地址，走内部网关时用；留空读 AGENT_BASE_URL")
+    @Option(names = "--model", defaultValue = "${env:AGENT_MODEL:-qwen-max}",
+            description = "模型名（默认 ${DEFAULT-VALUE}，env AGENT_MODEL）")
+    private String model;
+
+    @Option(names = "--base-url", defaultValue = "${env:AGENT_BASE_URL:-}",
+            description = "模型服务地址，走内部网关时用（env AGENT_BASE_URL）")
     private String baseUrl;
 
-    @Option(names = "--max-iters", description = "单轮最大推理迭代数（默认 ${DEFAULT-VALUE}）")
-    private int maxIters = 20;
+    @Option(names = "--max-iters", defaultValue = "${env:AGENT_MAX_ITERS:-20}",
+            description = "单轮最大推理迭代数（默认 ${DEFAULT-VALUE}，env AGENT_MAX_ITERS）")
+    private int maxIters;
 
-
-    @Option(names = "--system-prompt", description = "系统提示词")
+    @Option(names = "--system-prompt", defaultValue = "${env:AGENT_SYSTEM_PROMPT:-}",
+            description = "系统提示词（env AGENT_SYSTEM_PROMPT）")
     private String systemPrompt;
 
-    @Option(names = "--workspace", description = "workspace 根目录（默认 ~/.agent-cli/workspace）")
-    private Path workspace = defaultWorkspace();
+    @Option(names = "--workspace", defaultValue = "${env:AGENT_WORKSPACE:-}",
+            description = "workspace 根目录（默认 ~/.agent-cli/workspace，env AGENT_WORKSPACE）")
+    private Path workspace;
 
     @Option(names = "--enable-shell",
             description = "打开 shell 工具。本期不用沙箱，命令会直接在本机执行 —— 默认关闭")
@@ -69,13 +87,13 @@ public final class EngineOptions {
     private boolean enableFilesystem;
 
     /**
-     * 列出被显式指定、但在 {@code --backend redis} 下<b>不会生效</b>的引擎参数。
+     * 列出被显式指定、但在 {@code --sole} 下<b>不会生效</b>的引擎参数。
      *
-     * <p>远端模式下客户端根本不调模型，推理全在 worker 里 ——
+     * <p>{@code --sole} 下客户端根本不调模型，推理全在外部 worker 里 ——
      * 这些参数配在客户端上完全没有作用，而症状是"模型好像没换"，
      * 极难联想到是配错了进程。
      */
-    java.util.List<String> optionsIgnoredInRemoteMode() {
+    java.util.List<String> optionsIgnoredWithoutWorker() {
         java.util.List<String> ignored = new java.util.ArrayList<>();
         if (kind != Kind.AGENTSCOPE) {
             ignored.add("--engine");
@@ -117,7 +135,7 @@ public final class EngineOptions {
     }
 
     AgentScopeEngine createAgentScopeEngine(Jdbc jdbc) {
-        EngineConfig config = new EngineConfig(provider, model, null, baseUrl, workspace,
+        EngineConfig config = new EngineConfig(provider, model, null, baseUrl, resolveWorkspace(),
                 maxIters, systemPrompt, !enableShell, !enableFilesystem).resolveCredentials();
 
         // 刻意不放过 AUTO。原先这里写的是 provider != AUTO，
@@ -139,8 +157,9 @@ public final class EngineOptions {
      */
     String missingKeyDiagnostic(EngineConfig config) {
         return "缺少模型 API Key。\n"
-                + "\n  提供者  " + describe(provider.name(), provider != EngineConfig.Provider.AUTO)
-                + "\n  模型    " + describe(model, !"qwen-max".equals(model))
+                + "\n  提供者  " + describe(provider.name(),
+                        provider != EngineConfig.Provider.AUTO, "AGENT_PROVIDER")
+                + "\n  模型    " + describe(model, !"qwen-max".equals(model), "AGENT_MODEL")
                 + "\n  地址    " + (config.baseUrl() == null || config.baseUrl().isBlank()
                         ? "未设置，走提供者的默认端点" : config.baseUrl())
                 + "\n"
@@ -153,8 +172,19 @@ public final class EngineOptions {
                 + "\n  只想验链路、不调模型的话用 --engine scripted，它不需要任何 Key。";
     }
 
-    private static String describe(String value, boolean explicit) {
-        return value + (explicit ? "（命令行）" : "（默认值）");
+    /**
+     * 标出这个值<b>从哪来</b>。
+     *
+     * <p>光报值看不出问题在哪，而"模型 qwen-max（默认值）"一眼能看出
+     * 是整套参数都没送到 —— IDE 的运行配置不继承 shell 的 export，这个坑最常见。
+     */
+    private static String describe(String value, boolean explicit, String envName) {
+        if (!explicit) {
+            return value + "（默认值）";
+        }
+        String fromEnv = System.getenv(envName);
+        boolean matchesEnv = fromEnv != null && fromEnv.equalsIgnoreCase(value);
+        return value + (matchesEnv ? "（环境变量 " + envName + "）" : "（命令行）");
     }
 
     private ToolBundle toolBundle() {
@@ -165,8 +195,14 @@ public final class EngineOptions {
      * 默认 workspace 放在用户目录下，而不是框架默认的 {@code ./.agentscope/workspace}。
      *
      * <p>后者会在当前工作目录里长出一个目录树 —— 在项目根下跑一次就污染了仓库。
+     *
+     * <p>空串按"没给"处理：{@code ${env:AGENT_WORKSPACE:-}} 在环境变量缺席时
+     * 给出的是空路径，不是 null。
      */
-    private static Path defaultWorkspace() {
+    private Path resolveWorkspace() {
+        if (workspace != null && !workspace.toString().isBlank()) {
+            return workspace;
+        }
         String home = System.getProperty("user.home");
         return home == null ? null : Path.of(home, ".agent-cli", "workspace");
     }

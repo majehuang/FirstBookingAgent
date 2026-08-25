@@ -9,15 +9,20 @@ import java.util.concurrent.Callable;
 /**
  * 命令行入口。
  *
- * <p><b>不带子命令时直接进入会话模式</b>，会话内部的操作走斜杠命令
- * （{@code /new}、{@code /stop}、{@code /status}、{@code /session}、{@code /clear}、{@code /help}）。
- * 单独留一个 {@code chat} 子命令没有意义 —— 它是这个工具的默认用途，
- * 而不是与 worker、doctor 并列的一种模式。
+ * <p><b>运行形态只有两种</b>：{@code chat}（默认，不带子命令即是）与 {@code worker}。
+ * {@code migrate} 与 {@code doctor} 是跑完就退的维护工具，不是第三、第四种形态。
  *
- * <p>子命令与 开发规划.md D 节的模块一一对应，可以各自拉起为独立进程 ——
- * 因为模块之间没有任何直接调用，只经由 Redis 交换数据。
- * 后续接 servlet 时，门面只是把会话模式换成两条 SSE，
- * 其余四个子命令原样变成后台服务的启动入口。
+ * <ul>
+ *   <li>{@code chat} —— TUI 客户端 + 内嵌 worker，同一个进程，两半之间照样走 Redis。
+ *       {@code --sole} 只起客户端那一半</li>
+ *   <li>{@code worker} —— 只跑推理，不接受输入，每轮打一行日志</li>
+ * </ul>
+ *
+ * <p>会话内部的操作走斜杠命令（{@code /new}、{@code /stop}、{@code /status}、
+ * {@code /trace}、{@code /doctor}、{@code /keys} …）。
+ *
+ * <p>模块之间没有任何直接调用，只经由 Redis 交换数据 —— 后续接 servlet 时，
+ * 门面只是把会话模式换成两条 SSE，worker 一行不动。
  */
 @Command(
         name = "agent",
@@ -25,12 +30,10 @@ import java.util.concurrent.Callable;
         version = "agent 0.1.0-SNAPSHOT",
         description = "分布式 Agent 服务的命令行形态。不带子命令时进入会话模式",
         subcommands = {
+                ChatCommand.class,
+                WorkerCommand.class,
                 MigrateCommand.class,
-                DoctorCommand.class,
-                IngressCommand.class,
-                EgressCommand.class,
-                DispatcherCommand.class,
-                WorkerCommand.class
+                DoctorCommand.class
         })
 public final class AgentCli implements Callable<Integer> {
 

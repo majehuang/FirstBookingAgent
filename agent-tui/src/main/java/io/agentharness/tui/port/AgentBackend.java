@@ -21,6 +21,21 @@ public interface AgentBackend extends ChatGateway, InstructionSink, AutoCloseabl
         return Optional.empty();
     }
 
+    /**
+     * 诊断能力（{@code /doctor}、{@code /keys}）。
+     *
+     * <p>可选：拿不出来的后端返回 empty，此时那两条斜杠命令会说明为什么没有，
+     * 而不是打一段空表。
+     */
+    default Optional<Diagnostics> diagnostics() {
+        return Optional.empty();
+    }
+
+    /** 追踪开关（{@code /trace}）。可选：没有追踪落点的后端返回 empty。 */
+    default Optional<TraceControl> traceControl() {
+        return Optional.empty();
+    }
+
     @Override
     default void close() {
     }

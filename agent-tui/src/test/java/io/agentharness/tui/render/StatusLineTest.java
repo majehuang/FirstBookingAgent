@@ -17,7 +17,7 @@ class StatusLineTest {
     private static final Instant NOW = Instant.parse("2026-08-23T10:00:00Z");
 
     private UiState connected() {
-        return UiState.initial(SessionRef.of("u1", "s-local"), "loopback")
+        return UiState.initial(SessionRef.of("u1", "s-local"), "redis")
                 .withConnection(ConnectionState.CONNECTED);
     }
 
@@ -25,7 +25,7 @@ class StatusLineTest {
     void 空闲状态展示会话_水位与后端() {
         String line = StatusLine.render(connected(), NOW, 120);
 
-        assertThat(line).startsWith("⏵ 空闲  ·  s-local  ·  seq 0  ·  loopback");
+        assertThat(line).startsWith("⏵ 空闲  ·  s-local  ·  seq 0  ·  redis");
         assertThat(line).endsWith("^C 停止  ^D 退出  /help");
         // 断言的是终端列数，不是字符数 —— 中文一个字占两列
         assertThat(DisplayWidth.of(line)).isEqualTo(120);
@@ -53,7 +53,7 @@ class StatusLineTest {
 
     @Test
     void 未连接时优先展示连接状态而不是turn阶段() {
-        UiState state = UiState.initial(SessionRef.of("u1", "s-local"), "loopback")
+        UiState state = UiState.initial(SessionRef.of("u1", "s-local"), "redis")
                 .withConnection(ConnectionState.DISCONNECTED);
 
         assertThat(StatusLine.render(state, NOW, 120)).startsWith("⏵ 已断开");
@@ -223,6 +223,6 @@ class StatusLineTest {
 
         assertThat(DisplayWidth.of(squeezed)).isLessThanOrEqualTo(46);
         assertThat(squeezed).contains("⇱ /stop 已发出");
-        assertThat(squeezed).doesNotContain("loopback");
+        assertThat(squeezed).doesNotContain("redis");
     }
 }
