@@ -106,10 +106,17 @@ public final class WorkerCommand implements Callable<Integer> {
                     + "  引擎=" + engineOptions.modelName()
                     + "  并发=" + concurrency);
             System.out.println("Redis " + redisUri + "  ·  " + db.resolveJdbcUrl());
-            System.out.println("按 Ctrl+C 停止。");
             if (trace) {
                 System.out.println("链路追踪已开启，输出在 stderr。");
             }
+            // worker 只跑推理，不带聊天界面。不写这句的话，
+            // 本终端看起来就像一个等着你说话的提示符 —— 敲进来的字会被 shell 回显，
+            // 于是"发了消息却没有回复"，而两边的日志都干干净净
+            System.out.println();
+            System.out.println("本终端不接受输入。另开一个终端进会话：");
+            System.out.println("    ./bin/agent --backend redis"
+                    + (trace ? " --trace" : ""));
+            System.out.println("按 Ctrl+C 停止 worker。");
 
             park();
             return 0;
