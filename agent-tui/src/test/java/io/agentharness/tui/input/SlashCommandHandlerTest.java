@@ -23,7 +23,7 @@ class SlashCommandHandlerTest {
     private final SlashCommandHandler handler = new SlashCommandHandler(() -> "s-generated");
 
     private UiState idle() {
-        return UiState.initial(SessionRef.of("dev", "s-local"), "loopback")
+        return UiState.initial(SessionRef.of("dev", "s-local"), "redis")
                 .withConnection(ConnectionState.CONNECTED);
     }
 
@@ -135,7 +135,7 @@ class SlashCommandHandlerTest {
 
             assertThat(lines).anySatisfy(t -> assertThat(t).contains("用户").contains("dev"));
             assertThat(lines).anySatisfy(t -> assertThat(t).contains("会话").contains("s-local"));
-            assertThat(lines).anySatisfy(t -> assertThat(t).contains("后端").contains("loopback"));
+            assertThat(lines).anySatisfy(t -> assertThat(t).contains("后端").contains("redis"));
             assertThat(lines).anySatisfy(t -> assertThat(t).contains("已连接"));
         }
 
@@ -203,4 +203,41 @@ class SlashCommandHandlerTest {
                     .anySatisfy(text -> assertThat(text).contains("/session"));
         }
     }
+
+    @Test
+    @DisplayName("/trace 不带参数报状态而不是切换 —— 敲两次不该把它悄悄关掉")
+    void trace不带参数只报状态() {
+        CommandOutcome outcome = run(SlashCommand.TRACE, "", idle());
+
+        assertThat(outcome).isInstanceOf(CommandOutcome.Trace.class);
+        assertThat(((CommandOutcome.Trace) outcome).action())
+                .isEqualTo(CommandOutcome.Trace.Action.SHOW);
+    }
+
+    @Test
+    void trace开与关() {
+        assertThat(((CommandOutcome.Trace) run(SlashCommand.TRACE, "on", idle())).action())
+                .isEqualTo(CommandOutcome.Trace.Action.ON);
+        assertThat(((CommandOutcome.Trace) run(SlashCommand.TRACE, "OFF", idle())).action())
+                .isEqualTo(CommandOutcome.Trace.Action.OFF);
+    }
+
+    @Test
+    @DisplayName("认不出的参数给用法，而不是当成 off")
+    void trace参数写错时给用法() {
+        CommandOutcome outcome = run(SlashCommand.TRACE, "yes", idle());
+
+        assertThat(outcome).isInstanceOf(CommandOutcome.Print.class);
+        assertThat(((CommandOutcome.Print) outcome).lines())
+                .anySatisfy(line -> assertThat(line.text()).contains("/trace [on|off]"));
+    }
+
+    @Test
+    void 诊断命令交给后端执行() {
+        assertThat(((CommandOutcome.Diagnose) run(SlashCommand.DOCTOR, "", idle())).kind())
+                .isEqualTo(CommandOutcome.Diagnose.Kind.DOCTOR);
+        assertThat(((CommandOutcome.Diagnose) run(SlashCommand.KEYS, "", idle())).kind())
+                .isEqualTo(CommandOutcome.Diagnose.Kind.KEYS);
+    }
+
 }

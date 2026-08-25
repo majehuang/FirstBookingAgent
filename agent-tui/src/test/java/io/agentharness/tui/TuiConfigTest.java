@@ -24,7 +24,7 @@ class TuiConfigTest {
 
     @Test
     void statusTick为null时退回默认值_而不是让定时器炸掉() {
-        TuiConfig config = new TuiConfig(SESSION, Path.of("/tmp/h"), false, null);
+        TuiConfig config = new TuiConfig(SESSION, Path.of("/tmp/h"), false, null, null);
 
         assertThat(config.statusTick()).isEqualTo(Duration.ofMillis(200));
     }
@@ -42,8 +42,23 @@ class TuiConfigTest {
     }
 
     @Test
+    void notes为null时当作空_而不是让欢迎语炸掉() {
+        TuiConfig config = new TuiConfig(SESSION, Path.of("/tmp/h"), false, null, null);
+
+        assertThat(config.notes()).isEmpty();
+    }
+
+    @Test
+    void 启动提示随会话切换一起带走() {
+        TuiConfig config = TuiConfig.of(SESSION).withNotes(java.util.List.of("内嵌 worker 已启动"));
+
+        assertThat(config.withSession(SessionRef.of("u1", "s2")).notes())
+                .containsExactly("内嵌 worker 已启动");
+    }
+
+    @Test
     void session为null时拒绝构造() {
-        assertThatThrownBy(() -> new TuiConfig(null, null, false, null))
+        assertThatThrownBy(() -> new TuiConfig(null, null, false, null, null))
                 .isInstanceOf(NullPointerException.class);
     }
 }

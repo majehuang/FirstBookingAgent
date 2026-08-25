@@ -13,6 +13,9 @@ public enum SlashCommand {
     NEW("new", List.of(), "[sessionId]", "开一个新会话，不带参数则随机生成 id"),
     SESSION("session", List.of("sess"), "<sessionId>", "切换到指定会话"),
     CLEAR("clear", List.of("cls"), "", "清屏，不影响服务端历史"),
+    TRACE("trace", List.of(), "[on|off]", "开关链路追踪，不带参数则报当前状态"),
+    DOCTOR("doctor", List.of(), "", "自检 Redis 与 PostgreSQL"),
+    KEYS("keys", List.of(), "", "打印当前会话真实用到的 Redis 键"),
     QUIT("quit", List.of("exit", "q"), "", "退出");
 
     private final String name;

@@ -15,10 +15,18 @@ public final class Banner {
     }
 
     public static List<RenderedLine> welcome(SessionRef session, String backendName) {
-        return List.of(
-                RenderedLine.of(LineKind.SYSTEM, "Agent 终端  ·  " + backendName),
-                RenderedLine.hint("会话 " + session + "    输入 /help 查看命令，^C 停止当前回复，^D 退出"),
-                RenderedLine.hint(""));
+        return welcome(session, backendName, List.of());
+    }
+
+    /** {@code notes} 排在会话那一行之后、空行之前，由装配方决定内容。 */
+    public static List<RenderedLine> welcome(SessionRef session, String backendName,
+                                             List<String> notes) {
+        List<RenderedLine> lines = new ArrayList<>();
+        lines.add(RenderedLine.of(LineKind.SYSTEM, "Agent 终端  ·  " + backendName));
+        lines.add(RenderedLine.hint("会话 " + session + "    输入 /help 查看命令，^C 停止当前回复，^D 退出"));
+        notes.forEach(note -> lines.add(RenderedLine.hint(note)));
+        lines.add(RenderedLine.hint(""));
+        return List.copyOf(lines);
     }
 
     public static List<RenderedLine> help() {
