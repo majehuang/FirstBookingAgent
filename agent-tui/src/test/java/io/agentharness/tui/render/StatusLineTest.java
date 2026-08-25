@@ -27,7 +27,8 @@ class StatusLineTest {
 
         assertThat(line).startsWith("⏵ 空闲  ·  s-local  ·  seq 0  ·  loopback");
         assertThat(line).endsWith("^C 停止  ^D 退出  /help");
-        assertThat(line).hasSize(120);
+        // 断言的是终端列数，不是字符数 —— 中文一个字占两列
+        assertThat(DisplayWidth.of(line)).isEqualTo(120);
     }
 
     @Test
@@ -96,13 +97,132 @@ class StatusLineTest {
         String narrow = StatusLine.render(connected(), NOW, 50);
 
         assertThat(narrow).doesNotContain("^C");
-        assertThat(narrow).hasSizeLessThanOrEqualTo(50);
+        assertThat(DisplayWidth.of(narrow)).isLessThanOrEqualTo(50);
     }
 
     @Test
-    void 极窄终端截断后仍带省略号() {
+    @DisplayName("窄终端整段丢弃，而不是把某一段截掉半截")
+    void 极窄终端丢段而非截断() {
         String tiny = StatusLine.render(connected(), NOW, 12);
 
-        assertThat(tiny).hasSize(12).endsWith("…");
+        // 放不下就整段不要。截成 "⏵ 空闲  ·  s…" 那样的半截 session id 没有任何用处
+        assertThat(tiny).isEqualTo("⏵ 空闲");
+        assertThat(DisplayWidth.of(tiny)).isLessThanOrEqualTo(12);
+    }
+
+    @Test
+    @DisplayName("连头段都放不下时才截断，此时仍带省略号")
+    void 头段放不下才截断() {
+        UiState writing = connected()
+                .withControl(ControlFrame.idle().withTurnStarted("r1").withPhase(TurnPhase.WRITING), NOW);
+
+        String tiny = StatusLine.render(writing, NOW.plusSeconds(9), 6);
+
+        // 下一个字是中文，占两列，放不进剩下的一列 —— 于是停在 5 列。
+        // 宁可短一列也不能超：超了就折行，状态行会变成两行
+        assertThat(DisplayWidth.of(tiny)).isLessThanOrEqualTo(6);
+        assertThat(tiny).endsWith("…");
+    }
+
+    // ---------- 控制状态（P2-8） ----------
+
+    @Test
+    @DisplayName("展示 activeReplyId 与 ctrlId 水位 —— 控制通道出错只在这里看得见")
+    void 展示活跃回复与控制水位() {
+        UiState state = connected().withControl(
+                ControlFrame.idle().withTurnStarted("r-abc123").withPhase(TurnPhase.WRITING)
+                        .withCtrlId("1724502938471-0"), NOW);
+
+        String line = StatusLine.render(state, NOW, 140);
+
+        assertThat(line).contains("⌁ r-abc123");
+        // 前缀是毫秒时间戳，同一会话内几乎不变，留尾部才分得出先后
+        assertThat(line).contains("ctrl …938471-0");
+    }
+
+    @Test
+    @DisplayName("/stop 发出后挂出「已发出」，直到控制帧认下它")
+    void 在途控制指令可见() {
+        UiState sent = connected()
+                .withControl(ControlFrame.idle().withTurnStarted("r-1").withPhase(TurnPhase.WRITING), NOW)
+                .withPendingControl("/stop");
+
+        assertThat(StatusLine.render(sent, NOW, 140)).contains("⇱ /stop 已发出");
+    }
+
+    @Test
+    @DisplayName("控制帧认下之后标记消失 —— 否则会一直显示成没生效")
+    void 控制帧到达后清除在途标记() {
+        UiState sent = connected()
+                .withControl(ControlFrame.idle().withTurnStarted("r-1").withPhase(TurnPhase.WRITING), NOW)
+                .withPendingControl("/stop");
+
+        UiState acknowledged = sent.withControl(
+                sent.control().withStopping().withCtrlId("1724502938999-0"), NOW);
+
+        assertThat(acknowledged.hasPendingControl()).isFalse();
+        assertThat(StatusLine.render(acknowledged, NOW, 140)).doesNotContain("已发出");
+    }
+
+    @Test
+    @DisplayName("turn 自己跑完也算认下 —— 否则标记永远挂着")
+    void turn结束同样清除在途标记() {
+        UiState sent = connected()
+                .withControl(ControlFrame.idle().withTurnStarted("r-1").withPhase(TurnPhase.WRITING), NOW)
+                .withPendingControl("/stop");
+
+        UiState ended = sent.withControl(ControlFrame.idle().withTurnEnded(TurnPhase.DONE), NOW);
+
+        assertThat(ended.hasPendingControl()).isFalse();
+    }
+
+    @Test
+    @DisplayName("没有 turn 却不让输入 —— 这是卡住了，必须看得见")
+    void 输入被锁死时给出提示() {
+        ControlFrame stuck = new ControlFrame(false, false, null, TurnPhase.IDLE, false, null, null);
+
+        assertThat(StatusLine.render(connected().withControl(stuck, NOW), NOW, 140))
+                .contains("⌾ 输入锁定");
+    }
+
+    @Test
+    @DisplayName("turn 进行中输入本就该锁着，不重复提示")
+    void turn进行中不提示输入锁定() {
+        UiState running = connected().withControl(
+                ControlFrame.idle().withTurnStarted("r-1").withPhase(TurnPhase.WRITING), NOW);
+
+        assertThat(StatusLine.render(running, NOW, 140)).doesNotContain("输入锁定");
+    }
+
+    @Test
+    @DisplayName("中文标签按列算宽 —— 按字符数算会撑破终端而折行")
+    void 中文不撑破终端宽度() {
+        UiState busy = connected()
+                .withControl(ControlFrame.idle().withTurnStarted("r-2cad459a-441")
+                        .withPhase(TurnPhase.WRITING).withCtrlId("1787627140230-0"), NOW)
+                .withPendingControl("/stop")
+                .withMsgSeq(42);
+
+        for (int width = 20; width <= 130; width++) {
+            assertThat(DisplayWidth.of(StatusLine.render(busy, NOW.plusSeconds(2), width)))
+                    .as("宽度 %d", width)
+                    .isLessThanOrEqualTo(width);
+        }
+    }
+
+    @Test
+    @DisplayName("宽度不够时先丢后端名，控制指令留到最后")
+    void 按优先级丢弃而非按书写顺序() {
+        UiState state = connected()
+                .withControl(ControlFrame.idle().withTurnStarted("r-abcdef123456")
+                        .withPhase(TurnPhase.WRITING).withCtrlId("1724502938471-0"), NOW)
+                .withPendingControl("/stop")
+                .withMsgSeq(42);
+
+        String squeezed = StatusLine.render(state, NOW, 46);
+
+        assertThat(DisplayWidth.of(squeezed)).isLessThanOrEqualTo(46);
+        assertThat(squeezed).contains("⇱ /stop 已发出");
+        assertThat(squeezed).doesNotContain("loopback");
     }
 }

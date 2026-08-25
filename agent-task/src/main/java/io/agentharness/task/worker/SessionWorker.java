@@ -1,6 +1,7 @@
 package io.agentharness.task.worker;
 
 import io.agentharness.engine.EventMapper;
+import io.agentharness.engine.EventTrace;
 import io.agentharness.engine.MessageDraft;
 import io.agentharness.engine.TurnEngine;
 import io.agentharness.keys.KeyNamespace;
@@ -22,6 +23,8 @@ import io.agentharness.store.message.PendingMessage;
 import io.agentharness.task.coldstore.ColdStorageBypass;
 import io.agentharness.task.outbox.OutboxStream;
 import io.agentharness.task.outbox.OutboxWriter;
+import io.agentharness.trace.TraceSink;
+import io.agentharness.trace.TraceStage;
 import io.lettuce.core.StreamMessage;
 import io.lettuce.core.XReadArgs;
 import org.slf4j.Logger;
@@ -64,10 +67,20 @@ public final class SessionWorker {
     private final OutboxStream outbox;
     private final ControlPublisher control;
     private final ColdStorageBypass coldStorage;
+    private final TraceSink trace;
 
     public SessionWorker(RedisRuntime runtime, MessageRepository repository, TurnEngine engine,
                          OutboxWriter outboxWriter, OutboxStream outbox,
                          ControlPublisher control, ColdStorageBypass coldStorage) {
+        this(runtime, repository, engine, outboxWriter, outbox, control, coldStorage,
+                TraceSink.disabled());
+    }
+
+    public SessionWorker(RedisRuntime runtime, MessageRepository repository, TurnEngine engine,
+                         OutboxWriter outboxWriter, OutboxStream outbox,
+                         ControlPublisher control, ColdStorageBypass coldStorage,
+                         TraceSink trace) {
+        this.trace = trace;
         this.runtime = runtime;
         this.leases = new LeaseGuard(runtime);
         this.cursors = new Cursors(runtime);
@@ -84,8 +97,16 @@ public final class SessionWorker {
         SessionRef session = token.toSession();
         return leases.tryAcquire(session, LEASE_TTL)
                 .flatMap(held -> held
-                        .map(lease -> drainUnderLease(session, lease))
+                        .map(lease -> {
+                            trace.emit(TraceStage.READY_CLAIMED, session.sessionId(),
+                                    () -> "执行权已抢到，租约 " + LEASE_TTL.toSeconds() + "s");
+                            return drainUnderLease(session, lease);
+                        })
                         .orElseGet(() -> {
+                            // 抢不到同样要打：一条消息迟迟没回复时，
+                            // "被别人持着"和"根本没收到令牌"是两个完全不同的方向
+                            trace.emit(TraceStage.READY_CLAIMED, session.sessionId(),
+                                    () -> "执行权已被他人持有，跳过");
                             log.debug("session {} 已被他人持有，跳过", session.sessionId());
                             return Mono.empty();
                         }));
@@ -174,6 +195,10 @@ public final class SessionWorker {
     private Mono<Void> runTurn(SessionRef session, ClientMessage userMessage,
                                UserInstruction instruction) {
         String replyId = userMessage.replyId();
+        trace.emit(TraceStage.TURN_START, session.sessionId(),
+                () -> "replyId=" + replyId
+                        + " instructionId=" + instruction.instructionId()
+                        + " seq=" + userMessage.msgSeq());
 
         return outbox.publish(session, userMessage)
                 .then(control.publish(session,
@@ -187,6 +212,10 @@ public final class SessionWorker {
 
     private Flux<ClientMessage> streamTurn(SessionRef session, String replyId, String text) {
         Flux<PendingMessage> drafts = engine.stream(session, text)
+                // 追踪的是引擎吐出的原始事件，排在 EventMapper 之前 ——
+                // 映射本身就是最容易出错的一段，用映射后的结果去追踪等于自证清白
+                .doOnNext(event -> trace.emit(TraceStage.STEP_EVENT, session.sessionId(),
+                        () -> replyId + "  " + EventTrace.describe(event)))
                 // 冷存储是 fire-and-forget 的旁路：它慢、它挂，都不影响这条流
                 .doOnNext(event -> coldStorage.record(session, replyId, event))
                 // INV-8：事件管道一律 concatMap。换 flatMap 小批量看不出，批稍大就错位

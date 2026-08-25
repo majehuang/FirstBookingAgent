@@ -14,6 +14,7 @@ import io.agentharness.task.outbox.OutboxStream;
 import io.agentharness.task.outbox.OutboxWriter;
 import io.agentharness.task.worker.ControlPublisher;
 import io.agentharness.task.worker.SessionWorker;
+import io.agentharness.trace.TraceSink;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
@@ -37,6 +38,10 @@ import java.util.concurrent.CountDownLatch;
         description = "Worker 模块：消费 ready、抢执行权、抽干 inbox、写 outbox")
 public final class WorkerCommand implements Callable<Integer> {
 
+    /** 与 {@code OutboxStream} / {@code ControlPublisher} 的默认值一致，此处只是为了能传 sink。 */
+    private static final long DEFAULT_OUTBOX_MAX_LEN = 10_000L;
+    private static final java.time.Duration CONTROL_TTL = java.time.Duration.ofHours(12);
+
     @Option(names = {"-r", "--redis"}, description = "Redis 连接串（默认 ${DEFAULT-VALUE}）")
     private String redisUri = "redis://localhost:6379";
 
@@ -47,6 +52,12 @@ public final class WorkerCommand implements Callable<Integer> {
     @Option(names = "--concurrency",
             description = "同时在飞的 session 数上限（默认 ${DEFAULT-VALUE}）")
     private int concurrency = 8;
+
+    @Option(names = "--trace",
+            description = "把链路各环节打到 stderr：抢到 ready、turn 启动、每个 step 事件、"
+                    + "进 ctrl-stream 与 outbox 的原始载荷。"
+                    + "与客户端的 --plain 按 sessionId 对齐成一条完整链路")
+    private boolean trace;
 
     @Mixin
     private DbOptions db = new DbOptions();
@@ -68,8 +79,12 @@ public final class WorkerCommand implements Callable<Integer> {
             TurnEngine engine = engineOptions.createEngine(jdbc);
             resources.add(engine);
 
+            // 六个环节里有五个在本进程，同一个 sink 串起来即可；
+            // 客户端那一环（写 inbox）在会话进程里，靠 sessionId 对齐
+            TraceSink traceSink = trace ? TraceSink.toStderr("worker") : TraceSink.disabled();
+
             MessageRepository repository = new PostgresMessageRepository(jdbc);
-            OutboxStream outbox = new OutboxStream(runtime);
+            OutboxStream outbox = new OutboxStream(runtime, DEFAULT_OUTBOX_MAX_LEN, traceSink);
 
             SessionWorker worker = new SessionWorker(
                     runtime,
@@ -77,8 +92,9 @@ public final class WorkerCommand implements Callable<Integer> {
                     engine,
                     new OutboxWriter(repository, outbox),
                     outbox,
-                    new ControlPublisher(runtime),
-                    new ColdStorageBypass(new PostgresEventLogRepository(jdbc)));
+                    new ControlPublisher(runtime, CONTROL_TTL, traceSink),
+                    new ColdStorageBypass(new PostgresEventLogRepository(jdbc)),
+                    traceSink);
 
             ReadyDispatcher dispatcher = new ReadyDispatcher(
                     runtime, worker, consumerName, concurrency, java.time.Duration.ofMillis(50));
@@ -91,6 +107,9 @@ public final class WorkerCommand implements Callable<Integer> {
                     + "  并发=" + concurrency);
             System.out.println("Redis " + redisUri + "  ·  " + db.jdbcUrl);
             System.out.println("按 Ctrl+C 停止。");
+            if (trace) {
+                System.out.println("链路追踪已开启，输出在 stderr。");
+            }
 
             park();
             return 0;

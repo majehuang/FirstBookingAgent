@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.agentharness</groupId>
+    <artifactId>java-agent-sdk</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>agent-trace</artifactId>
+  <name>agent-trace</name>
+  <description>链路追踪埋点。零依赖 —— 六个环节分散在四个模块里，它必须能被任何一个引用</description>
+</project>

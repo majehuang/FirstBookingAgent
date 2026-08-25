@@ -19,6 +19,7 @@ import io.agentharness.tui.loopback.LoopbackBackend;
 import io.agentharness.tui.port.AgentBackend;
 import io.agentharness.tui.terminal.TerminalUi;
 import io.agentharness.tui.terminal.TerminalUiFactory;
+import io.agentharness.trace.TraceSink;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 
@@ -149,8 +150,12 @@ public final class ChatOptions {
                 ? ClientCapabilities.defaults()
                 : ClientCapabilities.full();
 
+        // 逐行模式本就是排查与验收场景，追踪跟着它走，不再单开一个开关。
+        // 打到 stderr 而非 stdout —— stdout 是可 diff 的验收产物，掺进追踪就没法比对了
+        TraceSink traceSink = plain ? TraceSink.toStderr("tui") : TraceSink.disabled();
+
         return new RedisBackend(
-                new RedisInstructionPublisher(runtime, repository),
+                new RedisInstructionPublisher(runtime, repository, traceSink),
                 new RedisMessageSubscriber(runtime, declared),
                 repository,
                 declared);

@@ -26,7 +26,7 @@
 |---|---|
 | **P0 地基** | ✅ 六项完成，一项阻塞（阿里云实例探针，需访问权限） |
 | **P1 单节点闭环** | ✅ 主链路跑通，自动化用例待补（见 `Test/P1/`） |
-| **P2 消息渲染** | ✅ G2 通过：卡片端到端、冻结一致、BlockHound 零告警 |
+| **P2 消息渲染** | ✅ G2 通过：卡片端到端、冻结一致、BlockHound 零告警、状态条控制状态、链路追踪 |
 | P3 多节点 / P4 断线重连 / P5 控制通道 / P6 容量降级 | 未开始 |
 
 **P1 已具备**：投递、唤醒、执行权、抽干、合批落库、outbox 扇出、全量重放、冷存储旁路。
@@ -108,6 +108,29 @@ workspace 默认在 `~/.agent-cli/workspace`（框架默认是 `./.agentscope/wo
 
 ---
 
+## 状态条
+
+```
+✎ 生成中 1.4s  ·  ⌁ r-2cad459a-441  ·  ctrl …140230-0  ·  s-local  ·  seq 2  ·  redis    ^C 停止  ^D 退出  /help
+```
+
+除了阶段与耗时，还摆着**控制通道的状态**：
+
+| 段 | 含义 |
+|---|---|
+| `⌁ r-…` | 当前活跃的 replyId，用来和 worker 的追踪对上 |
+| `ctrl …140230-0` | ctrlId 水位。重连重放的起点，控制通道出错时先看它 |
+| `⇱ /stop 已发出` | 控制指令已投递、服务端还没认下 |
+| `⌾ 输入锁定` | 没有 turn 在跑却不让输入 —— 这是卡住了，不是正常状态 |
+
+控制通道（快照 + 水位 + 重放）是本项目最难自证正确的一条链路，
+它出错的典型表现是重连后 `turnActive` 翻转，而那在滚动区里**看不见**。
+摆在状态条上，这类问题才有可能被当场发现。
+
+宽度不够时**按优先级逐段丢弃**，而不是从右边一刀截断 ——
+截断先砍掉的是书写顺序排在最后的段，与它值不值得看无关。
+宽度一律按**终端列数**算：中文一个字占两列，按字符数排版会撑破终端而折行。
+
 ## 会话内命令
 
 会话模式是默认用途，**不需要再敲一个 `chat`**；会话内的操作走斜杠命令：
@@ -182,6 +205,48 @@ printf '你好\n/status\n/quit\n' | ./bin/agent --backend redis --db-user admin 
 逐行模式下会等本轮结束再读下一行，并在退出前**从消息表对账**补齐还没轮询到的消息 ——
 管道不会像人一样等着看结果。
 
+### 链路追踪
+
+一条消息从投出去到用户看见，中间跨两个进程、七个 key、四层存储。任何一环静默失败，
+现场都只有"机器人不理我"。六个环节可以各自落痕：
+
+| 环节 | 打在哪个进程 |
+|---|---|
+| 指令写入 inbox | 会话进程 |
+| ready 令牌被抢到（含执行权归属） | worker |
+| turn 启动 | worker |
+| turn 内每个 step 事件 | worker |
+| 控制帧进入 ctrl-stream（带 ctrlId 水位） | worker |
+| 消息进入 outbox（原始载荷） | worker |
+
+会话侧由 `--plain` 隐含打开，worker 侧用 `--trace`：
+
+```bash
+./bin/agent worker --engine scripted --trace --db-user admin      # 终端 A
+printf '你好\n/quit\n' | ./bin/agent --backend redis --plain --db-user admin  # 终端 B
+```
+
+两个终端并排，按 sessionId 对齐成一条完整链路：
+
+```
+[11:05:39.969] tui     → inbox  s-1  1787627139966-0  {"instructionId":"i-c59b…","kind":"MESSAGE",…}
+[11:05:40.108] worker  ✦ ready  s-1  执行权已抢到，租约 30s
+[11:05:40.215] worker  ▶ turn   s-1  replyId=r-2cad459a-441 instructionId=i-c59b… seq=1
+[11:05:40.231] worker  ← outbox s-1  1787627140229-0  {"msgSeq":1,"replyId":"r-2cad…","role":"USER",…}
+[11:05:40.232] worker  ⇄ ctrl   s-1  {"activeReplyId":"r-2cad…","ctrlId":"1787627140230-0","phase":"THINKING",…}
+[11:05:40.239] worker  · step   s-1  r-2cad459a-441  REASONING text="收到"
+[11:05:40.263] worker  ← outbox s-1  1787627140261-0  {"msgSeq":2,…,"type":"TEXT_DELTA",…}
+[11:05:40.264] worker  ⇄ ctrl   s-1  {"ctrlId":"1787627140262-0","phase":"DONE",…,"turnActive":false}
+```
+
+三点值得留意：
+
+- **追踪走 stderr，不走 stdout。** 逐行模式的 stdout 是可 diff 的验收产物，
+  掺进追踪就没法比对了；交互式终端上两者都可见，不影响观察
+- **打的是原始载荷，不是摘要。** 客户端渲染出问题时，第一件要确认的就是服务端到底发了什么。
+  超过 512 字符会截断并**标注截掉多少** —— 静默截断在这里比不打还糟
+- **默认关闭。** 热路径上每条消息都会走过埋点，关闭时连载荷都不会构造
+
 ---
 
 ## 模块
@@ -189,6 +254,7 @@ printf '你好\n/status\n/quit\n' | ./bin/agent --backend redis --db-user admin 
 ```
 agent-protocol   协议 v1.1：ClientMessage / UserInstruction / ControlFrame / 能力协商
 agent-keys       Redis 键命名的唯一实现：KeyNamespace + 256 分片
+agent-trace      链路追踪埋点。零依赖 —— 六个环节散在四个模块里，它必须谁都能引用
 agent-redis      Redis 原语：连接、流载荷编解码、lease、双游标
 agent-store      PostgreSQL：消息表（真相源）、序号分配、事件冷存储、自定义 DataSource
 agent-engine     AgentScope 适配：HarnessAgent 装配、事件映射、PG 版两个 Store、可控引擎
@@ -204,14 +270,15 @@ agent-cli        命令行入口与组装根
 | 模块 | 依赖 |
 |---|---|
 | `agent-cli` | comm · task · engine · tui · redis · store · keys —— 组装根，认识所有人 |
-| `agent-task` | engine · redis · store · keys · protocol |
-| `agent-comm` | redis · store · keys · protocol |
+| `agent-task` | engine · redis · store · keys · protocol · trace |
+| `agent-comm` | redis · store · keys · protocol · trace |
 | `agent-tools` | engine · protocol |
 | `agent-engine` | store · protocol · **tui**（见下方警告） |
 | `agent-redis` | keys · protocol |
 | `agent-store` | protocol |
-| `agent-tui` | protocol |
+| `agent-tui` | protocol · trace |
 | `agent-keys` | 无 —— 它是契约本身，不能依赖任何东西 |
+| `agent-trace` | 无 —— 同上，它要能被任何一层引用 |
 
 **`agent-comm` 与 `agent-task` 互相看不见** —— 两者都没声明对方，
 想直接调用会**编译失败**。这比写一条测试来守要硬：规划 D 节要求它们只经由 Redis 交换数据，
@@ -376,12 +443,14 @@ mvn -q verify        # 单测 + 覆盖率门禁（行覆盖 80%）
 export AGENT_IT_JDBC_URL=jdbc:postgresql://localhost:5432/agent
 export AGENT_IT_DB_USER=admin
 export AGENT_IT_DB_PASSWORD=...
+export AGENT_IT_REDIS_URI=redis://localhost:6379
 mvn -q verify
 ```
 
 它们验证的是 mock 验证不了的东西：`ON CONFLICT ... RETURNING` 的并发原子性、
 jsonb 往返保真、`putIfVersion` 的 CAS 语义、多态 `ContentBlock` 的序列化、
-并发重试不烧序号。
+并发重试不烧序号，以及链路追踪里那两条只有真 Redis 才成立的断言 ——
+ctrl 追踪必须带着 Lua 刚生成的水位、outbox 追踪必须带着条目 id，打了桩这两样都是假的。
 
 不计入覆盖率门禁的是两类：终端适配层与 CLI 外壳（只做 IO 编排，逻辑已下沉），
 以及必须有活的 Redis／数据库才能跑的类（由集成测试提供真实保障）。

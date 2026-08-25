@@ -16,6 +16,10 @@
   <dependencies>
     <dependency>
       <groupId>io.agentharness</groupId>
+      <artifactId>agent-trace</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.agentharness</groupId>
       <artifactId>agent-tui</artifactId>
     </dependency>
     <dependency>

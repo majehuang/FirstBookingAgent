@@ -2,6 +2,7 @@ package io.agentharness.comm.ingress;
 
 import io.agentharness.keys.KeyNamespace;
 import io.agentharness.protocol.Ack;
+import io.agentharness.protocol.Json;
 import io.agentharness.protocol.SessionRef;
 import io.agentharness.protocol.UserInstruction;
 import io.agentharness.redis.ReadyToken;
@@ -9,6 +10,8 @@ import io.agentharness.redis.RedisException;
 import io.agentharness.redis.RedisRuntime;
 import io.agentharness.redis.StreamPayload;
 import io.agentharness.store.message.MessageRepository;
+import io.agentharness.trace.TraceSink;
+import io.agentharness.trace.TraceStage;
 import io.lettuce.core.XAddArgs;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -48,10 +51,17 @@ public final class RedisInstructionPublisher implements InstructionPublisher {
 
     private final RedisRuntime runtime;
     private final MessageRepository repository;
+    private final TraceSink trace;
 
     public RedisInstructionPublisher(RedisRuntime runtime, MessageRepository repository) {
+        this(runtime, repository, TraceSink.disabled());
+    }
+
+    public RedisInstructionPublisher(RedisRuntime runtime, MessageRepository repository,
+                                     TraceSink trace) {
         this.runtime = runtime;
         this.repository = repository;
+        this.trace = trace;
     }
 
     @Override
@@ -62,6 +72,11 @@ public final class RedisInstructionPublisher implements InstructionPublisher {
                 .xadd(inboxKey, XAddArgs.Builder.maxlen(INBOX_MAX_LEN).approximateTrimming(),
                         StreamPayload.of(instruction))
                 .onErrorMap(e -> new RedisException("写 inbox 失败，指令未被接受", e))
+
+                // 追踪落在 XADD 之后：写成功了才算"进了 inbox"。
+                // 放在前面的话，失败的那次也会留痕，反倒把排查引向错误的方向
+                .doOnNext(entryId -> trace.emit(TraceStage.INBOX_IN, session.sessionId(),
+                        () -> entryId + "  " + Json.write(instruction)))
 
                 // ② ready 在后。这一步失败时 inbox 里已经有指令了，
                 //    但没有唤醒令牌 —— 靠客户端带同一个 instructionId 重试来补

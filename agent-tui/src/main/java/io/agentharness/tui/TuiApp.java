@@ -264,12 +264,23 @@ public final class TuiApp implements AutoCloseable {
 
         UserInstruction cancel = UserInstruction.cancel(
                 newInstructionId(), control.activeReplyId(), Instant.now());
+
+        // 状态条上挂出"已发出"，直到控制帧认下它为止。
+        // 控制指令不会以消息形式回到流里，没有这个标记的话中间完全没有反馈，
+        // 用户会以为没生效而反复按 —— 于是 inbox 里堆一串取消指令
+        state.updateAndGet(current -> current.withPendingControl("/stop"));
+
         backend.send(snapshot.session(), cancel)
                 .subscribeOn(Schedulers.boundedElastic())
                 .publishOn(renderScheduler)
                 .subscribe(ack -> {
-                }, error -> ui.printLines(List.of(
-                        RenderedLine.of(LineKind.ERROR, "✗ 停止指令投递失败：" + rootMessage(error)))));
+                }, error -> {
+                    // 投递失败就把标记撤掉，否则它会一直挂着，
+                    // 显示成"已发出"而实际上根本没出去
+                    state.updateAndGet(current -> current.withPendingControl(null));
+                    ui.printLines(List.of(
+                            RenderedLine.of(LineKind.ERROR, "✗ 停止指令投递失败：" + rootMessage(error))));
+                });
     }
 
     private void switchSession(String sessionId) {

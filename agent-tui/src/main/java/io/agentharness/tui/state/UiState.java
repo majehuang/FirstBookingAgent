@@ -22,7 +22,8 @@ public record UiState(
         long lastMsgSeq,
         long gapCount,
         Instant turnStartedAt,
-        String pendingInput) {
+        String pendingInput,
+        String pendingControl) {
 
     public UiState {
         Objects.requireNonNull(session, "session");
@@ -33,12 +34,12 @@ public record UiState(
 
     public static UiState initial(SessionRef session, String backendName) {
         return new UiState(session, backendName, ConnectionState.CONNECTING,
-                ControlFrame.idle(), 0L, 0L, null, null);
+                ControlFrame.idle(), 0L, 0L, null, null, null);
     }
 
     public UiState withConnection(ConnectionState next) {
         return new UiState(session, backendName, next, control, lastMsgSeq, gapCount,
-                turnStartedAt, pendingInput);
+                turnStartedAt, pendingInput, pendingControl);
     }
 
     /**
@@ -49,7 +50,23 @@ public record UiState(
      */
     public UiState withPendingInput(String text) {
         return new UiState(session, backendName, connection, control, lastMsgSeq, gapCount,
-                turnStartedAt, text);
+                turnStartedAt, text, pendingControl);
+    }
+
+    /**
+     * 记下一条已发出、服务端还没确认的控制指令（目前只有 /stop）。
+     *
+     * <p>控制指令与普通消息不同：它<b>不会</b>在流里以消息形式回来，
+     * 唯一的回执是控制帧的变化。中间这段空窗如果没有反馈，
+     * 用户会以为 /stop 没生效而反复按 —— 于是 inbox 里堆一串取消指令。
+     */
+    public UiState withPendingControl(String label) {
+        return new UiState(session, backendName, connection, control, lastMsgSeq, gapCount,
+                turnStartedAt, pendingInput, label);
+    }
+
+    public boolean hasPendingControl() {
+        return pendingControl != null && !pendingControl.isBlank();
     }
 
     public boolean hasPendingInput() {
@@ -57,29 +74,29 @@ public record UiState(
     }
 
     public UiState withControl(ControlFrame next) {
-        Instant startedAt = next.turnActive() && turnStartedAt == null ? Instant.now()
-                : next.turnActive() ? turnStartedAt
-                : null;
-        return new UiState(session, backendName, connection, next, lastMsgSeq, gapCount,
-                startedAt, pendingInput);
+        return withControl(next, Instant.now());
     }
 
     public UiState withControl(ControlFrame next, Instant now) {
         Instant startedAt = next.turnActive() && turnStartedAt == null ? now
                 : next.turnActive() ? turnStartedAt
                 : null;
+        // 服务端认下了这条控制指令，"已发出"到此结束。
+        // 判据是 stopping 置起或这一轮已经结束 —— 后者覆盖了
+        // 停止指令到达时 turn 恰好自己跑完的情况，否则标记会一直挂着
+        String stillPending = next.stopping() || !next.turnActive() ? null : pendingControl;
         return new UiState(session, backendName, connection, next, lastMsgSeq, gapCount,
-                startedAt, pendingInput);
+                startedAt, pendingInput, stillPending);
     }
 
     public UiState withMsgSeq(long seq) {
         return new UiState(session, backendName, connection, control, seq, gapCount,
-                turnStartedAt, pendingInput);
+                turnStartedAt, pendingInput, pendingControl);
     }
 
     public UiState withGapDetected() {
         return new UiState(session, backendName, connection, control, lastMsgSeq, gapCount + 1,
-                turnStartedAt, pendingInput);
+                turnStartedAt, pendingInput, pendingControl);
     }
 
     public boolean inputAllowed() {

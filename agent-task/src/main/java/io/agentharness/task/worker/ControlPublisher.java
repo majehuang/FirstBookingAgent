@@ -5,6 +5,8 @@ import io.agentharness.protocol.ControlFrame;
 import io.agentharness.protocol.Json;
 import io.agentharness.protocol.SessionRef;
 import io.agentharness.redis.RedisRuntime;
+import io.agentharness.trace.TraceSink;
+import io.agentharness.trace.TraceStage;
 import io.lettuce.core.ScriptOutputType;
 import reactor.core.publisher.Mono;
 
@@ -45,14 +47,20 @@ public final class ControlPublisher {
 
     private final RedisRuntime runtime;
     private final Duration ttl;
+    private final TraceSink trace;
 
     public ControlPublisher(RedisRuntime runtime) {
-        this(runtime, DEFAULT_TTL);
+        this(runtime, DEFAULT_TTL, TraceSink.disabled());
     }
 
     public ControlPublisher(RedisRuntime runtime, Duration ttl) {
+        this(runtime, ttl, TraceSink.disabled());
+    }
+
+    public ControlPublisher(RedisRuntime runtime, Duration ttl, TraceSink trace) {
         this.runtime = runtime;
         this.ttl = ttl;
+        this.trace = trace;
     }
 
     /** @return 写入后的快照，含刚刚产生的 ctrlId 水位 */
@@ -68,6 +76,10 @@ public final class ControlPublisher {
                         },
                         json, String.valueOf(ttl.toSeconds()), String.valueOf(CTRL_STREAM_MAX_LEN))
                 .next()
+                // 打脚本返回的快照而不是入参：只有它带着刚生成的 ctrlId 水位，
+                // 而水位正是这条链路最需要盯的东西（INV-11）
+                .doOnNext(snapshot -> trace.emit(TraceStage.CTRL_OUT, session.sessionId(),
+                        () -> snapshot))
                 .map(snapshot -> Json.read(snapshot, ControlFrame.class));
     }
 }
