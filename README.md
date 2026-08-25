@@ -223,9 +223,24 @@ printf '你好\n/status\n/quit\n' | ./bin/agent --backend redis --db-user admin 
 会隐含打开它，交互式终端下要显式指定。
 
 ```bash
-./bin/agent worker --engine scripted --trace --db-user admin      # 终端 A
-./bin/agent --backend redis --trace --db-user admin               # 终端 B
+export AGENT_DB_USER=admin AGENT_DB_PASSWORD=...   # 一次，两个进程共用
+
+./bin/agent worker --engine scripted --trace       # 终端 A
+./bin/agent --backend redis --trace                # 终端 B
 ```
+
+两侧日志都带毫秒时间戳前缀，合起来 `sort` 就是一条跨进程的完整链路：
+
+```bash
+cat tui.trace worker.trace | grep -v SLF4J | sort
+```
+
+> ⚠️ 同一毫秒内的多行，`sort` 按字符串比而不是按发生顺序 —— 跨进程的先后没问题
+> （网络跳一次远超 1ms），但要看**一轮之内**的准确顺序，单看 worker 那个文件，
+> 它本身就是发出顺序。
+>
+> ⚠️ 交互式 TUI 下把追踪重定向到文件再 `tail -f`。JLine 独占终端写入，
+> 追踪从 Reactor 线程写 stderr，两个生产者抢同一块屏幕会让光标乱跳。
 
 会话进程只经手「写 inbox」这一环，而它只存在于 redis 后端 ——
 `--trace` 配上 loopback／agentscope 会给出提示而不是一片安静。
@@ -537,6 +552,20 @@ Redis 因此只承担队列与协调结构。已写回规划 B 节修订。
 换引擎、或为不同租户装配不同引擎时，改动止步于它。
 
 ---
+
+## 环境变量
+
+连接参数都能从环境变量读，命令行给了则命令行优先。本地开发时几个进程共用一套参数，
+一条 `export` 比每条命令重复一遍强：
+
+| 变量 | 对应参数 | 默认值 |
+|---|---|---|
+| `AGENT_JDBC_URL` | `--jdbc-url` | `jdbc:postgresql://localhost:5432/agent` |
+| `AGENT_DB_USER` | `--db-user` | `agent` |
+| `AGENT_DB_PASSWORD` | `--db-password` | 无 |
+| `AGENT_API_KEY` | 模型密钥 | 无 |
+
+**密码与密钥只能走环境变量**：写在命令行上会进 shell 历史，也会出现在 `ps` 的输出里。
 
 ## 环境
 

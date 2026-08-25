@@ -26,7 +26,7 @@ public final class MigrateCommand implements Callable<Integer> {
     public Integer call() {
         try {
             if (createDatabase) {
-                boolean created = new DatabaseBootstrap(db.jdbcUrl, db.username, db.resolvePassword())
+                boolean created = new DatabaseBootstrap(db.resolveJdbcUrl(), db.resolveUser(), db.resolvePassword())
                         .ensureDatabase();
                 System.out.println(created ? "✓ 已新建数据库" : "· 数据库已存在，跳过建库");
             }
@@ -37,7 +37,7 @@ public final class MigrateCommand implements Callable<Integer> {
 
         try (DataSourceProvider provider = db.openProvider()) {
             int statements = new SchemaMigrator(new Jdbc(provider)).migrate();
-            System.out.println("✓ 表结构已就绪（执行 " + statements + " 条语句）  " + db.jdbcUrl);
+            System.out.println("✓ 表结构已就绪（执行 " + statements + " 条语句）  " + db.resolveJdbcUrl());
             return 0;
         } catch (RuntimeException e) {
             System.err.println("✗ 建表失败：" + rootMessage(e));

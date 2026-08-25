@@ -105,7 +105,7 @@ public final class WorkerCommand implements Callable<Integer> {
             System.out.println("worker 已就绪  consumer=" + consumerName
                     + "  引擎=" + engineOptions.modelName()
                     + "  并发=" + concurrency);
-            System.out.println("Redis " + redisUri + "  ·  " + db.jdbcUrl);
+            System.out.println("Redis " + redisUri + "  ·  " + db.resolveJdbcUrl());
             System.out.println("按 Ctrl+C 停止。");
             if (trace) {
                 System.out.println("链路追踪已开启，输出在 stderr。");

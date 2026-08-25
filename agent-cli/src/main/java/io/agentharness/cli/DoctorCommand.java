@@ -52,7 +52,7 @@ public final class DoctorCommand implements Callable<Integer> {
         }
 
         if (!skipDb) {
-            System.out.println("PostgreSQL  " + db.jdbcUrl);
+            System.out.println("PostgreSQL  " + db.resolveJdbcUrl());
             List<CheckResult> results = probePostgres();
             results.forEach(r -> System.out.println(r.format()));
             all.addAll(results);
@@ -71,9 +71,9 @@ public final class DoctorCommand implements Callable<Integer> {
 
     private List<CheckResult> probePostgres() {
         try (DataSourceProvider provider = db.openProvider()) {
-            return new PostgresProbe(provider, db.jdbcUrl).run();
+            return new PostgresProbe(provider, db.resolveJdbcUrl()).run();
         } catch (RuntimeException e) {
-            return List.of(CheckResult.fail("连接", db.jdbcUrl + " —— " + e.getMessage()));
+            return List.of(CheckResult.fail("连接", db.resolveJdbcUrl() + " —— " + e.getMessage()));
         }
     }
 }
