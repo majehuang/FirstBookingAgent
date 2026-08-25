@@ -27,6 +27,7 @@
 
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
+    <netty.version>4.1.118.Final</netty.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
@@ -202,6 +203,49 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <profiles>
+    <!--
+      macOS 上 netty 缺原生 DNS 解析器会在每次启动时打一条警告。
+      它本身无害（Redis 连的是 localhost 或 IP，不走 DNS），但它绕过了 slf4j：
+      netty 发现绑定的是 nop 时会主动拒绝、退回 JUL 直接打印，所以静音配置对它无效。
+
+      补上原生解析器是治本的做法 —— 只在 macOS 生效，Linux 上本就没这个问题。
+    -->
+    <profile>
+      <id>macos-dns</id>
+      <activation>
+        <os><family>mac</family></os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-resolver-dns-native-macos</artifactId>
+          <version>${netty.version}</version>
+          <classifier>${netty.macos.classifier}</classifier>
+          <scope>runtime</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>macos-aarch64</id>
+      <activation>
+        <os><family>mac</family><arch>aarch64</arch></os>
+      </activation>
+      <properties>
+        <netty.macos.classifier>osx-aarch_64</netty.macos.classifier>
+      </properties>
+    </profile>
+    <profile>
+      <id>macos-x86-64</id>
+      <activation>
+        <os><family>mac</family><arch>x86_64</arch></os>
+      </activation>
+      <properties>
+        <netty.macos.classifier>osx-x86_64</netty.macos.classifier>
+      </properties>
+    </profile>
+  </profiles>
 
   <build>
     <pluginManagement>

@@ -138,8 +138,10 @@ public final class ChatOptions {
 
     private AgentBackend openBackend(List<AutoCloseable> resources) {
         // 会话进程只经手"写 inbox"这一环，而它只存在于 Redis 后端。
-        // 不提示的话，--trace 配上别的后端就是一片安静，看起来像追踪坏了
-        if (tracing() && backend != Backend.REDIS) {
+        // 不提示的话，--trace 配上别的后端就是一片安静，看起来像追踪坏了。
+        // 只在显式指定 --trace 时提示：--plain 是隐含开启的，
+        // 给没要过追踪的人弹这条纯属噪音
+        if (trace && backend != Backend.REDIS) {
             System.err.println("· --trace 在 " + backend + " 后端下没有可追踪的环节："
                     + "写 inbox 只发生在 redis 后端。worker 侧的五个环节用 agent worker --trace");
         }

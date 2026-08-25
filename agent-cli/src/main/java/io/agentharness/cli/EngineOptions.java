@@ -84,11 +84,41 @@ public final class EngineOptions {
         EngineConfig config = new EngineConfig(provider, model, null, baseUrl, workspace,
                 maxIters, systemPrompt, !enableShell, !enableFilesystem).resolveCredentials();
 
-        if (!config.hasApiKey() && provider != EngineConfig.Provider.AUTO) {
-            throw new IllegalStateException(
-                    "缺少 API Key。设置 AGENT_API_KEY，或按提供者设置 DASHSCOPE_API_KEY / OPENAI_API_KEY");
+        // 刻意不放过 AUTO。原先这里写的是 provider != AUTO，
+        // 于是默认路径（provider 就是 AUTO）缺 Key 根本不报错，
+        // 一路建到引擎里、直到第一次调模型才炸，报的还是上游的话。
+        // 守卫只在用户显式指定 provider 时生效 —— 而那恰恰是他已经想清楚的情况
+        if (!config.hasApiKey()) {
+            throw new IllegalStateException(missingKeyDiagnostic(config));
         }
         return AgentScopeEngine.create(config, jdbc, toolBundle());
+    }
+
+    /**
+     * 缺 Key 时把当前解析结果摊开。
+     *
+     * <p>和数据库那边同一个思路：光说"缺 Key"看不出问题在哪，
+     * 而"提供者 AUTO（默认值）、模型 qwen-max（默认值）"一眼能看出
+     * 是整套模型参数都没送到，而不只是少一个环境变量。
+     */
+    String missingKeyDiagnostic(EngineConfig config) {
+        return "缺少模型 API Key。\n"
+                + "\n  提供者  " + describe(provider.name(), provider != EngineConfig.Provider.AUTO)
+                + "\n  模型    " + describe(model, !"qwen-max".equals(model))
+                + "\n  地址    " + (config.baseUrl() == null || config.baseUrl().isBlank()
+                        ? "未设置，走提供者的默认端点" : config.baseUrl())
+                + "\n"
+                + "\n  这些环境变量都是空的：AGENT_API_KEY、DASHSCOPE_API_KEY、OPENAI_API_KEY"
+                + "\n  在 IDE 里运行要在「运行配置 → 环境变量」里设 —— 它不继承 shell 的 export。"
+                + "\n"
+                + "\n  接 Kimi 这类 OpenAI 兼容端点还要三个参数："
+                + "\n    --provider openai --base-url https://api.kimi.com/coding/ --model kimi-for-coding"
+                + "\n"
+                + "\n  只想验链路、不调模型的话用 --engine scripted，它不需要任何 Key。";
+    }
+
+    private static String describe(String value, boolean explicit) {
+        return value + (explicit ? "（命令行）" : "（默认值）");
     }
 
     private ToolBundle toolBundle() {

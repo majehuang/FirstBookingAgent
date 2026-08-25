@@ -563,13 +563,24 @@ Redis 因此只承担队列与协调结构。已写回规划 B 节修订。
 | `AGENT_JDBC_URL` | `--jdbc-url` | `jdbc:postgresql://localhost:5432/agent` |
 | `AGENT_DB_USER` | `--db-user` | `agent` |
 | `AGENT_DB_PASSWORD` | `--db-password` | 无 |
-| `AGENT_API_KEY` | 模型密钥 | 无 |
+| `AGENT_API_KEY` | 模型密钥（也认 `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`） | 无 |
+| `AGENT_BASE_URL` | `--base-url` | 无，走提供者默认端点 |
 
 **密码与密钥只能走环境变量**：写在命令行上会进 shell 历史，也会出现在 `ps` 的输出里。
 
 > ⚠️ **IDE 里运行要单独设。** IntelliJ 的运行配置**不继承** shell 的 `export`，
-> 要在「运行配置 → 环境变量」里填。连不上时的报错会把每个参数的来源标出来
-> （命令行／环境变量／默认值），一眼能看出是不是没送到。
+> 要在「运行配置 → 环境变量」里填。数据库连不上、模型缺 Key 时的报错都会把
+> 每个参数的来源标出来（命令行／环境变量／默认值），一眼能看出是不是没送到。
+
+接 Kimi 这类 OpenAI 兼容端点，除了 Key 还要三个参数：
+
+```bash
+export AGENT_API_KEY=sk-...
+./bin/agent --backend agentscope \
+    --provider openai --base-url https://api.kimi.com/coding/ --model kimi-for-coding
+```
+
+只想验分布式链路、不想调模型时用 `--engine scripted`，它不需要任何 Key。
 
 ## 环境
 
