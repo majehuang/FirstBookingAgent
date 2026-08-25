@@ -3,6 +3,7 @@ package io.agentharness.cli.redis;
 import io.agentharness.comm.egress.MessageSubscriber;
 import io.agentharness.comm.ingress.InstructionPublisher;
 import io.agentharness.protocol.Ack;
+import io.agentharness.protocol.ClientCapabilities;
 import io.agentharness.protocol.ClientMessage;
 import io.agentharness.protocol.ControlFrame;
 import io.agentharness.protocol.InstructionKind;
@@ -29,12 +30,14 @@ public final class RedisBackend implements AgentBackend, HistorySource {
     private final InstructionPublisher publisher;
     private final MessageSubscriber subscriber;
     private final MessageRepository repository;
+    private final ClientCapabilities capabilities;
 
     public RedisBackend(InstructionPublisher publisher, MessageSubscriber subscriber,
-                        MessageRepository repository) {
+                        MessageRepository repository, ClientCapabilities capabilities) {
         this.publisher = publisher;
         this.subscriber = subscriber;
         this.repository = repository;
+        this.capabilities = capabilities == null ? ClientCapabilities.full() : capabilities;
     }
 
     @Override
@@ -69,8 +72,17 @@ public final class RedisBackend implements AgentBackend, HistorySource {
         return Optional.of(this);
     }
 
+    /**
+     * 历史拉取。
+     *
+     * <p><b>这里也要降级。</b>只在消息流上做降级是不够的 —— 重开会话走的是历史拉取，
+     * 仅文本客户端照样会拿到一条它渲染不了的 CARD。
+     * 出站路径有两条，能力降级必须两条都覆盖。
+     */
     @Override
     public List<ClientMessage> since(SessionRef session, long sinceSeq, int limit) {
-        return repository.since(session, sinceSeq, limit);
+        return repository.since(session, sinceSeq, limit).stream()
+                .map(capabilities::degrade)
+                .toList();
     }
 }

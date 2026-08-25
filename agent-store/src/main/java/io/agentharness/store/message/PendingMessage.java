@@ -1,6 +1,7 @@
 package io.agentharness.store.message;
 
 import io.agentharness.protocol.MessageRole;
+import io.agentharness.protocol.Immutables;
 import io.agentharness.protocol.MessageType;
 
 import java.time.Instant;
@@ -30,6 +31,8 @@ public record PendingMessage(
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(createdAt, "createdAt");
         fallbackText = fallbackText == null ? "" : fallbackText;
-        payload = payload == null ? Map.of() : Map.copyOf(payload);
+        // 与 ClientMessage 同一套深冻结：草稿阶段就冻住，
+        // 免得落库前还有人能改到卡片内容
+        payload = Immutables.freeze(payload);
     }
 }

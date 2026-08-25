@@ -61,24 +61,102 @@ class HotelToolsTest {
     }
 
     @Test
-    void 卡片数量被截断_十几张卡片刷屏没有价值() {
-        List<Map<String, Object>> tooMany = java.util.stream.IntStream.range(0, 12)
-                .mapToObj(i -> (Map<String, Object>) new LinkedHashMap<String, Object>(
-                        Map.of("name", "酒店" + i)))
-                .toList();
-
+    @DisplayName("TOOL-004 空列表被拒绝 —— 不生成空卡片")
+    void 空列表返回结构化错误() {
         Map<String, Object> result = new HotelCardTool(source)
-                .sendHotelCards("标题", List.of(), tooMany, "2026-01-01");
+                .sendHotelCards("标题", List.of(), null, null);
 
-        assertThat(itemsOf(result)).hasSize(HotelCardTool.MAX_CARDS);
+        assertThat(result).containsKey("error").doesNotContainKey("card");
+        assertThat(result.get("error")).asString().contains("search_hotels");
     }
 
     @Test
-    void 没有可展示的酒店时提示模型先查询() {
-        Map<String, Object> result = new HotelCardTool(source)
-                .sendHotelCards("标题", List.of("不存在的id"), null, null);
+    @DisplayName("TOOL-004 超上限被拒绝 —— 不静默截断")
+    void 超过上限返回结构化错误() {
+        List<String> tooMany = java.util.stream.IntStream.range(0, 9)
+                .mapToObj(i -> "h-" + i).toList();
 
-        assertThat(result.get("shown")).asString().contains("search_hotels");
+        Map<String, Object> result = new HotelCardTool(source)
+                .sendHotelCards("标题", tooMany, null, null);
+
+        // 静默截断会让 shown 摘要与用户实际看到的对不上，模型会引用没显示出来的酒店
+        assertThat(result).containsKey("error").doesNotContainKey("card");
+        assertThat(result.get("error")).asString().contains("最多展示 5 家");
+    }
+
+    @Test
+    @DisplayName("TOOL-005 重复 id 去重保留首次，结果确定")
+    void 重复id被去重() {
+        Map<String, Object> result = new HotelCardTool(source).sendHotelCards(
+                "标题", List.of("h-guomao", "h-atour", "h-guomao"), null, null);
+
+        assertThat(itemsOf(result)).hasSize(2);
+        assertThat(itemsOf(result)).extracting(item -> item.get("name"))
+                .containsExactly("北京国贸大酒店", "东直门亚朵");
+        // shown 摘要必须与最终卡片一致
+        assertThat(result.get("shown")).asString().contains("2 张");
+    }
+
+    @Test
+    void 去重后正好卡在上限上是合法的() {
+        List<String> withDuplicates = List.of(
+                "h-guomao", "h-guomao", "h-hilton", "h-atour", "h-jinjiang");
+
+        Map<String, Object> result = new HotelCardTool(source)
+                .sendHotelCards("标题", withDuplicates, null, null);
+
+        assertThat(result).doesNotContainKey("error");
+        assertThat(itemsOf(result)).hasSize(4);
+    }
+
+    @Test
+    void id全部查不到时也返回错误而不是空卡片() {
+        Map<String, Object> result = new HotelCardTool(source)
+                .sendHotelCards("标题", List.of("不存在-1", "不存在-2"), null, null);
+
+        assertThat(result).containsKey("error").doesNotContainKey("card");
+    }
+
+    @Test
+    @DisplayName("入参不合法时 middleware 不进补全服务 —— 白查一次没有意义")
+    void 非法入参不触发查库() {
+        long before = source.lookupCount();
+
+        new HotelEnrichmentMiddleware(source).enrich(new ActingInput(List.of(
+                new ToolUseBlock("c-1", "send_hotel_cards", Map.of("hotelIds", List.of())))));
+
+        assertThat(source.lookupCount()).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("MID-004 重建时保留原有 metadata，且不改动原对象")
+    void 补全保留原metadata且不修改入参() {
+        Map<String, Object> metadata = Map.of("traceId", "t-1");
+        ToolUseBlock original = new ToolUseBlock("c-1", "send_hotel_cards",
+                Map.of("hotelIds", List.of("h-guomao")), null, metadata);
+        ActingInput input = new ActingInput(List.of(original));
+
+        ActingInput enriched = new HotelEnrichmentMiddleware(source).enrich(input);
+
+        ToolUseBlock rebuilt = enriched.toolCalls().get(0);
+        assertThat(rebuilt).isNotSameAs(original);
+        assertThat(rebuilt.getMetadata()).containsEntry("traceId", "t-1");
+        assertThat(rebuilt.getInput()).containsKey("resolved");
+        // 原对象不变
+        assertThat(original.getInput()).doesNotContainKey("resolved");
+        assertThat(input.toolCalls().get(0)).isSameAs(original);
+    }
+
+    @Test
+    @DisplayName("重建后 content 与 input 一致 —— 校验和绑定走的是 content")
+    void 重建同时更新content() {
+        ActingInput enriched = new HotelEnrichmentMiddleware(source).enrich(new ActingInput(List.of(
+                new ToolUseBlock("c-1", "send_hotel_cards",
+                        Map.of("hotelIds", List.of("h-guomao"))))));
+
+        String content = enriched.toolCalls().get(0).getContent();
+
+        assertThat(content).isNotNull().contains("resolved").contains("dataAsOf");
     }
 
     // ---------- 业务查询工具 ----------

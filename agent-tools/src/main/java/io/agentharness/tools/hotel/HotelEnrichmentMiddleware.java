@@ -79,8 +79,14 @@ public final class HotelEnrichmentMiddleware implements MiddlewareBase {
         Map<String, Object> arguments = new LinkedHashMap<>(
                 call.getInput() == null ? Map.of() : call.getInput());
 
+        // 入参不合法时不进补全服务：白查一次，而且工具那边照样会拒绝
+        CardRequest request = CardRequest.of(hotelIds(arguments));
+        if (!request.valid()) {
+            return call;
+        }
+
         List<Map<String, Object>> resolved = new ArrayList<>();
-        for (Hotel hotel : source.lookup(hotelIds(arguments))) {
+        for (Hotel hotel : source.lookup(request.hotelIds())) {
             resolved.add(hotel.toCardItem());
         }
 

@@ -47,7 +47,9 @@ public record ClientMessage(
                     + "客户端不支持该类型时只剩它可渲染");
         }
         Validate.required(createdAt, "createdAt");
-        payload = payload == null ? Map.of() : Map.copyOf(payload);
+        // 深冻结：只冻顶层的话，嵌套 items 仍可被外部引用改掉，
+        // 而消息表里那一行早就写完了 —— 内存与库会悄悄对不上
+        payload = Immutables.freeze(payload);
     }
 
     /** 用户发的一条消息。**由服务端落库后推流，客户端不本地回显。** */

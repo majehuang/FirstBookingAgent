@@ -108,6 +108,75 @@ class ScriptedTurnEngineTest {
     }
 
     @Test
+    @DisplayName("!card 剧本的顺序是 推荐理由 → 卡片 → 追问")
+    void 卡片剧本的消息顺序() {
+        io.agentharness.engine.rich.RichMessageRegistry registry =
+                io.agentharness.engine.rich.RichMessageRegistry.of(new CardRendererStub());
+
+        List<MessageDraft> drafts = run("!card").stream()
+                .flatMap(e -> EventMapper.map(e, registry).stream())
+                .toList();
+
+        List<MessageType> types = drafts.stream().map(MessageDraft::type).toList();
+        int cardIndex = types.indexOf(MessageType.CARD);
+
+        assertThat(cardIndex).isGreaterThan(0);
+        // 卡片之前是推荐理由，之后是追问 —— 反过来是先甩三个框再解释那三个框是什么
+        assertThat(textBefore(drafts, cardIndex)).contains("最合适");
+        assertThat(textAfter(drafts, cardIndex)).contains("？");
+        assertThat(types).endsWith(MessageType.TEXT_END);
+    }
+
+    @Test
+    void 卡片剧本抑制了表达型工具的调用状态行() {
+        io.agentharness.engine.rich.RichMessageRegistry registry =
+                io.agentharness.engine.rich.RichMessageRegistry.of(new CardRendererStub());
+
+        List<MessageType> types = run("!card").stream()
+                .flatMap(e -> EventMapper.map(e, registry).stream())
+                .map(MessageDraft::type)
+                .toList();
+
+        assertThat(types).doesNotContain(MessageType.TOOL_CALL);
+        assertThat(types).containsOnlyOnce(MessageType.CARD);
+    }
+
+    @Test
+    void 卡片剧本的内容固定_才能对着断言逐字节一致() {
+        assertThat(run("!card")).hasSameSizeAs(run("!card"));
+    }
+
+    private static String textBefore(List<MessageDraft> drafts, int index) {
+        return drafts.subList(0, index).stream().map(MessageDraft::text)
+                .reduce("", String::concat);
+    }
+
+    private static String textAfter(List<MessageDraft> drafts, int index) {
+        return drafts.subList(index + 1, drafts.size()).stream().map(MessageDraft::text)
+                .reduce("", String::concat);
+    }
+
+    /** 最小渲染器，只把 {@code card} 取出来。 */
+    private static final class CardRendererStub
+            implements io.agentharness.engine.rich.RichMessageRenderer {
+
+        @Override
+        public String toolName() {
+            return "send_hotel_cards";
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public MessageDraft render(String blockKey, java.util.Map<String, Object> toolResult) {
+            Object card = toolResult.get("card");
+            return card instanceof java.util.Map<?, ?> map
+                    ? new MessageDraft(blockKey, MessageType.CARD, "3 家酒店",
+                            (java.util.Map<String, Object>) map)
+                    : null;
+        }
+    }
+
+    @Test
     void 相同输入产出相同结果() {
         assertThat(run("你好")).hasSameSizeAs(run("你好"));
     }

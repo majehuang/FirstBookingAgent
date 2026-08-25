@@ -1,5 +1,6 @@
 package io.agentharness.tui.loopback;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -9,16 +10,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ScriptedReplyTest {
 
     @Test
-    void 酒店剧本覆盖了文本_工具_卡片的交错() {
+    @DisplayName("顺序是 推荐理由 → 卡片 → 追问，不是卡片在前")
+    void 酒店剧本的步骤顺序() {
         List<ReplyStep> steps = ScriptedReply.forPrompt("帮我订一间明天的酒店");
 
         assertThat(steps).extracting(step -> step.getClass().getSimpleName())
-                .containsExactly("Text", "ToolCall", "ToolResult", "Card", "Text");
+                .containsExactly("Text", "ToolCall", "ToolResult", "Text", "Card", "Text");
+
+        // 卡片之前那段是推荐理由，之后那段是追问
+        assertThat(((ReplyStep.Text) steps.get(3)).content()).contains("最合适");
+        assertThat(((ReplyStep.Text) steps.get(5)).content()).contains("？");
     }
 
     @Test
     void 卡片带数据时间_且条目内容在这一刻冻结() {
-        ReplyStep.Card card = (ReplyStep.Card) ScriptedReply.forPrompt("酒店").get(3);
+        ReplyStep.Card card = (ReplyStep.Card) ScriptedReply.forPrompt("酒店").get(4);
 
         assertThat(card.dataAsOf()).isNotBlank();
         assertThat(card.items()).hasSize(3);

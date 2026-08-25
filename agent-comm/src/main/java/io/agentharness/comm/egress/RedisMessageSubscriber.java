@@ -1,6 +1,7 @@
 package io.agentharness.comm.egress;
 
 import io.agentharness.keys.KeyNamespace;
+import io.agentharness.protocol.ClientCapabilities;
 import io.agentharness.protocol.ClientMessage;
 import io.agentharness.protocol.ControlFrame;
 import io.agentharness.protocol.Json;
@@ -32,13 +33,24 @@ import java.util.function.Function;
  *
  * <p><b>不使用消费组。</b>outbox 是扇出语义：同一 session 的两个客户端各自要看到完整消息流。
  * 用了消费组之后多端登录的两个设备会各拿一半事件（开发规划 G 节）。
+ *
+ * <p><b>能力降级在读取侧做，不在写入侧。</b>outbox 里必须存完整消息 ——
+ * 写入时就削掉的话，同一个 session 上能力不同的两个客户端只能看同一份被削过的内容，
+ * 而且新客户端升级之后也拿不回历史里的富消息。
  */
 public final class RedisMessageSubscriber implements MessageSubscriber {
 
     private final RedisRuntime runtime;
+    private final ClientCapabilities capabilities;
 
+    /** 默认按全能力下发。生产上应当由客户端建连时上报的能力决定。 */
     public RedisMessageSubscriber(RedisRuntime runtime) {
+        this(runtime, ClientCapabilities.full());
+    }
+
+    public RedisMessageSubscriber(RedisRuntime runtime, ClientCapabilities capabilities) {
         this.runtime = runtime;
+        this.capabilities = capabilities == null ? ClientCapabilities.full() : capabilities;
     }
 
     @Override
@@ -47,7 +59,11 @@ public final class RedisMessageSubscriber implements MessageSubscriber {
                 KeyNamespace.outbox(session.sessionId()),
                 Cursors.BEGINNING,
                 runtime.messagePollInterval(),
-                entry -> StreamPayload.read(entry.getBody(), ClientMessage.class));
+                entry -> StreamPayload.read(entry.getBody(), ClientMessage.class))
+                // 出站唯一的咽喉：客户端不支持的类型在这里压成纯文本。
+                // 降级放在读取侧而不是写入侧 —— outbox 里存的必须是完整消息，
+                // 否则两个能力不同的客户端就只能看同一份被削过的内容
+                .map(capabilities::degrade);
     }
 
     @Override

@@ -18,14 +18,14 @@ import java.util.Map;
  * <p>返回值带 {@code shown} 摘要供模型续接 —— 模型需要知道"我刚给用户看了什么"
  * 才能接着说"这三家里我更推荐…"。{@code card} 则是冻结后落库的消息内容。
  *
+ * <p>入参不合法（空列表、超上限、id 全部查不到）时返回<b>结构化错误</b>而不是空卡片：
+ * 空卡片会让用户看到一个空框，而模型以为已经展示过了，接着就说"这几家里我推荐…"。
+ *
  * <p>{@code resolved} 与 {@code dataAsOf} 由 {@link HotelEnrichmentMiddleware} 在
  * {@code onActing} 阶段填入。模型即使胡乱填了也会被覆盖 —— 这正是补全放在 middleware 的收益：
  * 卡片里的价格永远来自业务系统，不会是模型编的。
  */
 public final class HotelCardTool {
-
-    /** 一次最多展示几张卡片。超出的截断 —— 十几张卡片刷屏对用户没有价值。 */
-    static final int MAX_CARDS = 5;
 
     private final HotelSource source;
 
@@ -39,7 +39,9 @@ public final class HotelCardTool {
     public Map<String, Object> sendHotelCards(
             @ToolParam(name = "title", description = "卡片组标题，例如「为你找到 3 家酒店」")
             String title,
-            @ToolParam(name = "hotelIds", description = "要展示的酒店 id，来自 search_hotels 的结果")
+            @ToolParam(name = "hotelIds",
+                    description = "要展示的酒店 id，来自 search_hotels 的结果。"
+                            + "至少 1 个，最多 5 个；重复的会被去重")
             List<String> hotelIds,
             @ToolParam(name = "resolved", required = false,
                     description = "服务端填充，模型不要提供")
@@ -48,12 +50,24 @@ public final class HotelCardTool {
                     description = "服务端填充，模型不要提供")
             String dataAsOf) {
 
+        // 入参策略与 middleware 共用同一份判断，见 CardRequest
+        CardRequest request = CardRequest.of(hotelIds);
+        if (!request.valid()) {
+            // 结构化错误返回给模型，不生成空卡片、也不进补全服务。
+            // 模型看到原因后可以自己纠正再调一次
+            return Map.of("error", request.error());
+        }
+
         // middleware 没装上时自己兜底查一次。工具内部的阻塞调用不需要手动 offload ——
         // ToolExecutor 已经默认跑在 boundedElastic 上（开发规划 F 节的注）
         List<Map<String, Object>> items = resolved != null && !resolved.isEmpty()
-                ? capped(resolved)
-                : capped(lookupItems(hotelIds));
+                ? List.copyOf(resolved)
+                : lookupItems(request.hotelIds());
         String asOf = dataAsOf != null && !dataAsOf.isBlank() ? dataAsOf : source.dataAsOf();
+
+        if (items.isEmpty()) {
+            return Map.of("error", "hotelIds 都查不到对应的酒店，请确认 id 来自 search_hotels 的结果。");
+        }
 
         Map<String, Object> card = new LinkedHashMap<>();
         card.put("title", title == null || title.isBlank() ? "为你找到 " + items.size() + " 家酒店" : title);
@@ -72,10 +86,6 @@ public final class HotelCardTool {
             items.add(hotel.toCardItem());
         }
         return items;
-    }
-
-    private static List<Map<String, Object>> capped(List<Map<String, Object>> items) {
-        return items.size() <= MAX_CARDS ? List.copyOf(items) : List.copyOf(items.subList(0, MAX_CARDS));
     }
 
     /** 给模型看的一句话。带上名字，模型才能在后续正文里准确引用。 */

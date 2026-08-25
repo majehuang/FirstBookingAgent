@@ -37,17 +37,24 @@ public final class ScriptedReply {
                         + "其余输入都会得到这段话，用来验证流式文本与换行处理。\n"));
     }
 
+    /**
+     * 顺序是 <b>推荐理由 → 卡片 → 追问</b>，不是"卡片 → 理由"。
+     *
+     * <p>先给理由再给卡片，用户读到卡片时已经知道该看什么；反过来则是先甩三个框、
+     * 再解释刚才那三个框是什么意思。这个顺序是 G2 的验收项之一。
+     */
     private static List<ReplyStep> hotelScript() {
         return List.of(
                 new ReplyStep.Text("好的，我先查一下明天北京可订的房源。\n"),
                 new ReplyStep.ToolCall("search_hotels", Map.of("city", "北京", "date", "2026-08-24")),
                 new ReplyStep.ToolResult("找到 3 家符合条件的酒店"),
+                new ReplyStep.Text("这几家最合适：国贸离你下午的会场步行 8 分钟且含双早，\n"
+                        + "希尔顿便宜两百但要走 12 分钟，亚朵性价比最高。\n"),
                 new ReplyStep.Card("为你找到 3 家酒店", List.of(
                         Map.of("name", "北京国贸大酒店", "price", "¥1,280", "rating", "4.8★", "note", "含双早"),
                         Map.of("name", "王府井希尔顿", "price", "¥1,050", "rating", "4.7★", "note", "步行 12 分钟"),
                         Map.of("name", "东直门亚朵", "price", "¥680", "rating", "4.6★", "note", "性价比高")),
                         DATA_AS_OF),
-                new ReplyStep.Text("这三家里我更推荐国贸大酒店：离你下午的会场步行 8 分钟，\n"
-                        + "而且是唯一一家含双早的。要我直接锁一间大床房吗？\n"));
+                new ReplyStep.Text("要我直接锁一间大床房吗？\n"));
     }
 }

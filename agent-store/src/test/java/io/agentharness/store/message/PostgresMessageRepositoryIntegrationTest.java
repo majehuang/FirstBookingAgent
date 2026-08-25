@@ -15,8 +15,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
+import io.agentharness.protocol.Json;
+
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -311,6 +314,56 @@ class PostgresMessageRepositoryIntegrationTest {
         assertThat(loaded.role()).isEqualTo(MessageRole.USER);
         assertThat(loaded.type()).isEqualTo(MessageType.TEXT);
         assertThat(loaded).isEqualTo(outcome.message());
+    }
+
+    @Test
+    @DisplayName("FRZ-011 卡片经 jsonb 往返后逐字节一致 —— 重开会话所见即当时所见")
+    void 卡片经数据库往返后线格式不变() {
+        // 故意用不按字典序的插入顺序，且嵌套两层
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("rating", "4.8★");
+        item.put("name", "北京国贸大酒店");
+        item.put("price", "¥1,280");
+
+        Map<String, Object> card = new LinkedHashMap<>();
+        card.put("title", "为你找到 1 家酒店");
+        card.put("items", List.of(item));
+        card.put("dataAsOf", "2026-08-25 10:00");
+
+        Instant at = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        ClientMessage written = repository.append(session, List.of(new PendingMessage(
+                "r-1", "b-1", MessageRole.ASSISTANT, MessageType.CARD,
+                "为你找到 1 家酒店：北京国贸大酒店 ¥1,280 4.8★", card, at))).get(0);
+
+        // 首次出站的线格式
+        String firstWire = Json.write(written);
+
+        // 清空客户端状态，从消息表重新加载
+        ClientMessage reloaded = repository.since(session, 0, 10).get(0);
+        String rebuiltWire = Json.write(reloaded);
+
+        // PostgreSQL 的 jsonb 会按自己的规则重排对象键。
+        // 唯一能让两边对上的办法是序列化时统一按键排序 —— 插入序活不过 jsonb
+        assertThat(rebuiltWire).isEqualTo(firstWire);
+        assertThat(reloaded).isEqualTo(written);
+        assertThat(reloaded.fallbackText())
+                .isEqualTo("为你找到 1 家酒店：北京国贸大酒店 ¥1,280 4.8★");
+    }
+
+    @Test
+    void 载荷从数据库读回后仍然是深冻结的() {
+        Map<String, Object> card = new LinkedHashMap<>();
+        card.put("items", List.of(Map.of("name", "甲")));
+
+        repository.append(session, List.of(new PendingMessage("r-1", "b-1",
+                MessageRole.ASSISTANT, MessageType.CARD, "甲", card, Instant.now())));
+
+        ClientMessage reloaded = repository.since(session, 0, 10).get(0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) reloaded.payloadValue("items");
+
+        assertThatThrownBy(() -> items.get(0).put("name", "乙"))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test

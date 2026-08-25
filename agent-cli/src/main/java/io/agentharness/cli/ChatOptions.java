@@ -5,6 +5,7 @@ import io.agentharness.cli.redis.RedisBackend;
 import io.agentharness.comm.egress.RedisMessageSubscriber;
 import io.agentharness.comm.ingress.RedisInstructionPublisher;
 import io.agentharness.engine.AgentScopeEngine;
+import io.agentharness.protocol.ClientCapabilities;
 import io.agentharness.protocol.SessionRef;
 import io.agentharness.store.datasource.DataSourceProvider;
 import io.agentharness.store.jdbc.Jdbc;
@@ -37,6 +38,14 @@ import java.util.List;
  */
 public final class ChatOptions {
 
+    /** 客户端声明的渲染能力。 */
+    enum Capabilities {
+        /** 支持全部消息类型。 */
+        FULL,
+        /** 只保证文本 —— 富消息会被服务端压成 fallbackText。 */
+        TEXT
+    }
+
     enum Backend {
         /** 本地假引擎，零依赖，用来验证 TUI 本身。 */
         LOOPBACK,
@@ -65,6 +74,11 @@ public final class ChatOptions {
 
     @Option(names = {"-r", "--redis"}, description = "Redis 连接串（默认 ${DEFAULT-VALUE}）")
     private String redisUri = "redis://localhost:6379";
+
+    @Option(names = "--capabilities",
+            description = "客户端能力：${COMPLETION-CANDIDATES}（默认 ${DEFAULT-VALUE}）。"
+                    + "TEXT 用来验证服务端降级 —— 卡片会被压成纯文本")
+    private Capabilities capabilities = Capabilities.FULL;
 
     // ---- 假引擎 ----
 
@@ -131,10 +145,15 @@ public final class ChatOptions {
         resources.add(runtime);
 
         MessageRepository repository = new PostgresMessageRepository(new Jdbc(dataSource));
+        ClientCapabilities declared = capabilities == Capabilities.TEXT
+                ? ClientCapabilities.defaults()
+                : ClientCapabilities.full();
+
         return new RedisBackend(
                 new RedisInstructionPublisher(runtime, repository),
-                new RedisMessageSubscriber(runtime),
-                repository);
+                new RedisMessageSubscriber(runtime, declared),
+                repository,
+                declared);
     }
 
     private static void closeAll(List<AutoCloseable> resources) {

@@ -73,7 +73,11 @@ public final class EngineOptions {
 
     /** 按 {@code --engine} 建引擎。 */
     TurnEngine createEngine(Jdbc jdbc) {
-        return kind == Kind.SCRIPTED ? new ScriptedTurnEngine() : createAgentScopeEngine(jdbc);
+        // 可控引擎也带上渲染器：伪造的只是工具调用与结果，渲染要走真实路径，
+        // 否则端到端验的是另一套代码
+        return kind == Kind.SCRIPTED
+                ? new ScriptedTurnEngine(toolBundle().renderers())
+                : createAgentScopeEngine(jdbc);
     }
 
     AgentScopeEngine createAgentScopeEngine(Jdbc jdbc) {
