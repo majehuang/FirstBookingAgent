@@ -3,8 +3,9 @@
 分布式 Agent 服务。**模块之间没有 RPC、没有服务发现、没有共享内存 —— 接口就是那张 Redis key 表。**
 这是通信层与任务层可以独立部署、独立扩容的前提，也是整套设计最主要的收益。
 
-当前形态是命令行：会话模式是默认用途，任务层是独立进程。
-后续接 servlet 时只换门面，模块间的契约一行不动。
+当前形态是命令行，**运行形态只有两种**：`chat`（默认）与 `worker`。
+默认那种把两者放进同一个进程，两半之间照样只经由 Redis 交换数据 ——
+省的是第二个终端，不是那条边界。后续接 servlet 时只换门面，模块间的契约一行不动。
 
 | 文档 | 内容 |
 |---|---|
@@ -12,6 +13,7 @@
 | [`开发计划.md`](./开发计划.md) | 排期、任务卡、阶段门禁、执行记录 |
 | [`docs/客户端协议.md`](./docs/客户端协议.md) | 协议 v1.1，**冻结文档** |
 | [`docs/G0-验收记录.md`](./docs/G0-验收记录.md) | 可复现的验收命令与结果 |
+| [`docs/模块契约.md`](./docs/模块契约.md) | 收消息／发消息／任务控制三个模块读写哪些 key、守哪些不变量 |
 | [`docs/富消息接入.md`](./docs/富消息接入.md) | 接入一种新富消息的四步与两个坑 |
 | [`Test/P1/`](./Test/P1/) | P1 测试用例设计稿（60 个用例） |
 
@@ -47,54 +49,73 @@ mvn -q -DskipTests package        # 产出 agent-cli/target/agent.jar
 ```bash
 docker compose -f deploy/redis/docker-compose.yml up -d
 
-# 已有 PG 实例时直接指过去；没有的话用 deploy/postgres/ 起一个
+# 连接参数一次 export，两个进程共用（完整清单见「环境变量」一节）
+export AGENT_JDBC_URL=jdbc:postgresql://localhost:5432/agent
+export AGENT_DB_USER=admin
 export AGENT_DB_PASSWORD=...
-./bin/agent migrate --create-database \
-    --jdbc-url jdbc:postgresql://localhost:5432/agent --db-user admin
+export AGENT_API_KEY=sk-...
 
-./bin/agent doctor --jdbc-url jdbc:postgresql://localhost:5432/agent --db-user admin
+# 已有 PG 实例时直接指过去；没有的话用 deploy/postgres/ 起一个
+./bin/agent migrate --create-database
+./bin/agent doctor
 ```
 
 `doctor` 一次跑完 Redis 与 PG 两侧，退出码 0 表示全部通过、2 表示存在阻塞项。
 它是开发计划 P0-1 的自动化版本：引擎版本、架构、`EVAL`/`EVALSHA`、
 **脚本内 `XADD ... *`**、`XAUTOCLAIM`、`XTRIM MINID`，以及 PG 的表结构与序号分配原子性。
 
-### 二、选一个后端
+### 二、两种运行形态
 
 ```bash
-./bin/agent                          # loopback：本地假引擎，零依赖，只验 TUI
-./bin/agent --backend agentscope     # 真引擎，全部在本进程内
-./bin/agent --backend redis          # 最终形态：经 Redis 与 worker 进程通信
+./bin/agent                 # 默认：TUI + 内嵌 worker，一个进程就能跑通
+./bin/agent --sole          # 只起客户端，推理交给外部 worker
+./bin/agent worker          # 只起 worker，为了看日志
 ```
 
-`--backend redis` 需要另起一个任务层进程：
+**默认那种不是捷径。** TUI 与内嵌 worker 之间照样走 Redis：
+投递写 inbox+ready，输出读 outbox，状态条读 ctrl-stream。
+如果内嵌形态走的是进程内直连，那"单进程能跑通"就完全不能说明分布式形态能跑通 ——
+而分布式才是要交付的形态。省掉的只是第二个终端。
+
+多节点或者想单独看 worker 日志时拆成两个进程：
 
 ```bash
-# 终端 A —— 任务层（可多开，水平扩展）
-./bin/agent worker --db-user admin --engine scripted        # 可控引擎，端到端测试用
-./bin/agent worker --db-user admin --engine agentscope --tools hotel \
+# 终端 A —— 任务层（可多开，水平扩展）。引擎参数配在这一侧
+./bin/agent worker --engine scripted                        # 可控引擎，端到端测试用
+./bin/agent worker --tools hotel \
     --provider openai --model kimi-for-coding --base-url https://api.kimi.com/coding
 
 # 终端 B —— 客户端
-./bin/agent --backend redis --db-user admin --session s-1
+./bin/agent --sole --session s-1
 ```
 
 两个进程之间**没有任何直接调用**。数据流见下方[「Redis 数据流」](#redis-数据流)。
+
+> ⚠️ **内嵌 worker 消费的是全局唤醒队列，不只是你这个会话。**
+> 同一个 Redis 上有别人时，你的进程可能用你的模型参数去跑别人的会话。
+> 单机开发无所谓，共用 Redis 时请用 `--sole` 加独立 worker。
+> consumer 名固定为 `主机名-pid` —— 消费组按 consumer 名分配令牌，
+> 本机开两个会话时重名会让消息"有时没人处理、有时处理两次"。
 
 ### 三、真引擎的凭据
 
 ```bash
 export AGENT_API_KEY=...
-./bin/agent --backend agentscope --provider openai --model kimi-for-coding \
-    --base-url https://api.kimi.com/coding \
-    --jdbc-url jdbc:postgresql://localhost:5432/agent --db-user admin
+./bin/agent --provider openai --model kimi-for-coding \
+    --base-url https://api.kimi.com/coding
 ```
 
 `--provider openai` 覆盖所有 OpenAI 兼容端点（Kimi / DeepSeek / GLM / MiniMax），
 DashScope 用 `--provider dashscope`，`auto` 交给上游 SPI 按模型名解析。
+三条路径都会把已解析的 Key 与 `--base-url` 交给 provider ——
+`auto` 曾经不会（走的是 `resolve(modelName)` 单参重载，内部是空 context），
+症状是"守卫说 Key 有，上游说 Key 没有"。
 
 凭据只从环境变量读（`AGENT_API_KEY`，或 `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`）——
 命令行参数会进 shell 历史，也会出现在 `ps` 输出里。
+**每个参数都有对应的环境变量**，顺序是 命令行 > 环境变量 > 默认值 ——
+完整清单见[「环境变量」](#环境变量)。默认形态下同一套引擎参数要喂给两个地方
+（内嵌 worker，以及可能另起的 `agent worker`），一条 `export` 比两条命令上各写一遍可靠。
 
 **两个工具开关默认关闭，要开必须显式开：**
 
@@ -133,7 +154,7 @@ workspace 默认在 `~/.agent-cli/workspace`（框架默认是 `./.agentscope/wo
 
 ## 会话内命令
 
-会话模式是默认用途，**不需要再敲一个 `chat`**；会话内的操作走斜杠命令：
+会话模式是默认用途，`agent` 与 `agent chat` 是同一件事；会话内的操作走斜杠命令：
 
 | 命令 | 作用 |
 |---|---|
@@ -141,20 +162,39 @@ workspace 默认在 `~/.agent-cli/workspace`（框架默认是 `./.agentscope/wo
 | `/session <sessionId>` | 切到指定会话 |
 | `/stop` | 停止当前回复。空闲时只提示，不发无用指令 |
 | `/status` | 会话、连接、水位、空窗、在途输入 |
+| `/trace [on\|off]` | 运行时开关链路追踪。**不带参数报状态而不是切换** —— 敲两次不该把它悄悄关掉 |
+| `/doctor` | Redis 与 PG 自检，等同 `agent doctor` |
+| `/keys` | 打印**当前会话真实用到的**键，可以直接贴进 `redis-cli` |
 | `/clear` | 清屏，不影响服务端历史 |
 | `/help` | 命令列表 |
 | `/quit` | 退出（别名 `/exit` `/q`） |
 
 键位：`^C` 停止当前回复（不退出），`^D` 退出。
 
-子命令留给真正独立的进程：
+`/keys` 打出来是这样，末尾那两行是排查时最常用的判断：
 
-| 子命令 | 状态 |
+```
+会话 dev/s-1 用到的键
+  inbox      {s169}:sess:s-1:inbox       本进程写，worker 抽干
+  ready 队列 ready                        唤醒队列，全局共用一条
+  outbox     {s169}:sess:s-1:outbox      worker 写，本进程订阅
+  ...
+  没有回复时的看法：inbox 有条目而 outbox 没有 = worker 没接上；
+  两边都空 = 投递就没成功；lease 挂着不动 = 上一轮没收尾。
+```
+
+**一级命令只有四条：**
+
+| 命令 | 是什么 |
 |---|---|
-| `migrate` / `doctor` | ✅ 可用 |
-| `worker` | ✅ 可用 —— 任务控制 + Worker |
-| `ingress` / `egress` | 库已实现（`agent-comm`），会话模式即通过它们收发。独立进程形态待 HTTP 门面 |
-| `dispatcher` | 打印契约。它与 `worker` 在同一进程内，独立拆分待多节点部署 |
+| `chat` | 会话模式（默认，不带子命令即是）。TUI + 内嵌 worker，`--sole` 只起客户端 |
+| `worker` | 任务层进程。不接受输入，每完成一轮打一行日志 |
+| `migrate` | 建库建表，幂等，跑完就退 |
+| `doctor` | Redis + PG 自检，退出码 0/2，可当 CI 门禁 |
+
+原先的 `ingress` / `egress` / `dispatcher` 三条已删除 —— 它们跑起来只打印一段契约然后退出，
+是文档伪装成命令。契约进了 [`docs/模块契约.md`](./docs/模块契约.md)，
+键的真实形态用 `/keys` 看。
 
 ### 富消息
 
@@ -173,19 +213,9 @@ workspace 默认在 `~/.agent-cli/workspace`（框架默认是 `./.agentscope/wo
 所以 UI 必须标注数据时间，否则用户会把三天前的房价当成今天的。
 接入新的富消息见 [`docs/富消息接入.md`](./docs/富消息接入.md)。
 
-### 两个假引擎
+### 可控引擎
 
-用途不同，别混：
-
-**`loopback` 后端**（TUI 自带，零依赖）—— 只验终端界面，不碰 Redis 和数据库：
-
-| 输入 | 走什么路径 |
-|---|---|
-| 带「酒店」 | 文本 → 工具调用 → 卡片 → 文本，验证富消息与文本的交错顺序 |
-| 带「报错」 | 失败分支，验证已生成内容不被错误吃掉 |
-| 其它 | 多行文本，验证流式行缓冲 |
-
-**`--engine scripted`**（worker 侧，走完整链路）—— 端到端断言用，给定输入必产出同一串事件：
+`--engine scripted` 取代模型，走**完整链路**（Redis + 落库 + 渲染），给定输入必产出同一串事件：
 
 | 输入前缀 | 行为 |
 |---|---|
@@ -194,12 +224,19 @@ workspace 默认在 `~/.agent-cli/workspace`（框架默认是 `./.agentscope/wo
 | `!empty` | 不产出任何事件 |
 | 其它 | 回显 `收到：<原文>`，按 2 字一段切开 |
 
+端到端断言用它而不是真模型：真实模型既不确定又要花钱，
+拿它验证"1000 个片段是否保持顺序"会又慢又偶发失败。它也不需要任何 API Key。
+
+原先还有一个 `loopback` 后端（进程内假后端，零依赖，只验 TUI）。
+它随 `--backend` 一起删了 —— 留着它就得同时留着两套 turn 生命周期实现，
+而"单进程能跑通"本来就不该由一条绕开 Redis 的路径来证明。
+
 ### 脚本化验证
 
 非 tty 环境自动降级为逐行模式，输出是可 diff 的纯文本：
 
 ```bash
-printf '你好\n/status\n/quit\n' | ./bin/agent --backend redis --db-user admin --session s-1
+printf '你好\n/status\n/quit\n' | ./bin/agent --engine scripted --session s-1
 ```
 
 逐行模式下会等本轮结束再读下一行，并在退出前**从消息表对账**补齐还没轮询到的消息 ——
@@ -220,6 +257,11 @@ printf '你好\n/status\n/quit\n' | ./bin/agent --backend redis --db-user admin 
 | 消息进入 outbox（原始载荷） | worker |
 
 两个进程**同一个开关**：`--trace`。会话侧显式传 `--plain` 时会隐含打开它。
+进了会话之后用 `/trace on|off` 随时开关 —— 没有它的话，为了看一眼链路就得重启，
+而重启就丢会话上下文，"重现一次"往往才是排查里最难的那步。
+
+默认形态下追踪的两个落点（客户端那一环、内嵌 worker 那五环）由 `/trace` **一起**开关：
+只开一个的话链路是断的，而"看到前半段、后半段没有"最容易被误判成后半段挂了。
 
 > 注意：管道或 IDE 控制台下终端会**自动降级**成逐行模式，但那不会开启追踪 ——
 > 隐含开启只看 `--plain` 这个标志本身。在 IDEA 里要看追踪，显式加 `--trace`。
@@ -228,7 +270,13 @@ printf '你好\n/status\n/quit\n' | ./bin/agent --backend redis --db-user admin 
 export AGENT_DB_USER=admin AGENT_DB_PASSWORD=...   # 一次，两个进程共用
 
 ./bin/agent worker --engine scripted --trace       # 终端 A
-./bin/agent --backend redis --trace                # 终端 B
+./bin/agent --sole --trace                         # 终端 B
+```
+
+一个进程也能看全六环 —— 默认形态下内嵌 worker 的五环就在同一个进程里：
+
+```bash
+./bin/agent --engine scripted --trace
 ```
 
 两侧日志都带毫秒时间戳前缀，合起来 `sort` 就是一条跨进程的完整链路：
@@ -244,8 +292,8 @@ cat tui.trace worker.trace | grep -v SLF4J | sort
 > ⚠️ 交互式 TUI 下把追踪重定向到文件再 `tail -f`。JLine 独占终端写入，
 > 追踪从 Reactor 线程写 stderr，两个生产者抢同一块屏幕会让光标乱跳。
 
-会话进程只经手「写 inbox」这一环，而它只存在于 redis 后端 ——
-`--trace` 配上 loopback／agentscope 会给出提示而不是一片安静。
+会话进程只经手「写 inbox」这一环，另外五环在 worker 侧 ——
+默认形态下两者同进程，`--trace` 与 `/trace` 会把两个落点一起开关。
 
 两个终端并排，按 sessionId 对齐成一条完整链路：
 
@@ -301,7 +349,7 @@ agent-cli        命令行入口与组装根
 | `agent-task` | engine · redis · store · keys · protocol · trace |
 | `agent-comm` | redis · store · keys · protocol · trace |
 | `agent-tools` | engine · protocol |
-| `agent-engine` | store · protocol · **tui**（见下方警告） |
+| `agent-engine` | store · protocol |
 | `agent-redis` | keys · protocol |
 | `agent-store` | protocol |
 | `agent-tui` | protocol · trace |
@@ -315,10 +363,11 @@ Maven 的依赖图就是这条约束的执行者。
 其余边界也都是有意留的：`agent-store` 不认识 AgentScope，`agent-keys` 不认识任何业务，
 `agent-tui` 不认识数据库 —— TUI 要能在没有任何后端时独立跑起来。
 
-> ⚠️ **一处已知的层次倒置**：`agent-engine → agent-tui`。
-> `AgentScopeBackend` 实现的 `AgentBackend` 端口住在 `agent-tui` 里，于是引擎依赖了终端界面。
-> 正确的做法是把这个适配器挪到组装根（`agent-cli`），像 `RedisBackend` 那样 ——
-> 通信层与引擎都不该知道有个终端存在。清理它需要把 `SessionChannel` 提为 public，尚未做。
+过去这里有一处层次倒置（`agent-engine → agent-tui`）：进程内后端 `AgentScopeBackend`
+实现的端口住在 `agent-tui` 里，于是引擎依赖了终端界面。它随那个后端一起删掉了 ——
+内嵌 worker 也走 Redis 之后，进程内直连这条路径不再存在，
+`AgentScopeBackend` 与它的 `SessionChannel` 都成了死代码。
+**turn 生命周期从两份实现变成一份**（只剩 `SessionWorker`），是这轮清理最大的一笔。
 
 ---
 
@@ -423,9 +472,11 @@ ready                            刻意不分片：每个 pod 只监听一条 st
 | `state` | 序号三规则、UI 状态、归约器 | ✓ |
 | `input` | 斜杠命令解析与处理 | ✓ |
 | `render` | 行缓冲、文字稿归约、卡片与状态行渲染 | ✓ |
-| `port` | 与后端之间的三个端口 | ✓ |
-| `loopback` | 本地假引擎 | 有时序 |
+| `port` | 与后端之间的五个端口 | ✓ |
 | `terminal` | JLine 适配 / 逐行适配 | ✗ |
+
+`port` 里的 `Diagnostics` 与 `TraceControl` 是 `/doctor`、`/keys`、`/trace` 的落点：
+键的形态属于 Redis 那一层，终端界面不该知道 —— 换 HTTP 门面时被替换掉的正是那两个实现。
 
 `state/SeqRule` 实现的是开发规划 B 节那三条客户端规则（丢弃 / 追加 / 空窗）。
 它不是可选优化：服务端建连时全量重放窗口内消息、不保存也不解析客户端位置，
@@ -504,11 +555,10 @@ ctrl 追踪必须带着 Lua 刚生成的水位、outbox 追踪必须带着条目
 |---|---|---|
 | 崩溃接管 | 没有 `XAUTOCLAIM`／`XCLAIM JUSTID` 心跳／死 consumer 清理 | **P3。缺了它进程崩在处理中间时令牌会留在 PEL 里没人回收（INV-2b）** |
 | 原子摘牌 | 摘牌与"确认 inbox 已空"分两步 | P3。释放瞬间进来的消息可能无人处理（INV-2） |
-| 跨节点打断 | `--backend redis` 下 `/stop` 明确报错而不是静默无效 | P5。Worker 还不消费 ctrl 游标 |
+| 跨节点打断 | `/stop` 明确报错而不是静默无效 | P5。Worker 还不消费 ctrl 游标 |
 | 超窗历史补齐 | 空窗时从消息表拉取已实现，`turnStartId` 裁剪保护未做 | P4（INV-6） |
 | HTTP 门面 | 无鉴权、无 SSE 线格式 | 接 servlet 时。`Test/P1` 的 API-003/004、SSE-001/003/005/006 依赖它 |
 | AgentState 的 CAS | LWW 写入，`version` 列只做计数 | 上游 `AgentStateStore` 接口不接收版本号，表达不了 CAS。防双跑靠 lease（INV-3） |
-| 层次倒置 | `agent-engine → agent-tui` | 把 `AgentScopeBackend` 挪到组装根即可 |
 
 ### 与开发规划的偏差
 
@@ -564,18 +614,45 @@ Redis 因此只承担队列与协调结构。已写回规划 B 节修订。
 
 ## 环境变量
 
-连接参数都能从环境变量读，命令行给了则命令行优先。本地开发时几个进程共用一套参数，
-一条 `export` 比每条命令重复一遍强：
+优先级统一是 **命令行 > 环境变量 > 默认值**。之所以每个跨进程参数都配一个环境变量：
+默认形态下同一套引擎参数要喂给内嵌 worker，拆开部署时还要喂给 `agent worker` ——
+在两条命令上各写一遍、然后指望它们一直一致，是这类系统里最常见的一种配置漂移，
+症状是"换了模型只有一半生效"。
+
+### 连接
+
+| 变量 | 对应参数 | 默认值 | 用在 |
+|---|---|---|---|
+| `AGENT_REDIS_URI` | *(无 —— 没有命令行参数)* | `redis://localhost:6379` | chat · worker · doctor |
+| `AGENT_JDBC_URL` | `--jdbc-url` | `jdbc:postgresql://localhost:5432/agent` | 全部 |
+| `AGENT_DB_USER` | `--db-user` | `agent` | 全部 |
+| `AGENT_DB_PASSWORD` | `--db-password` | 无 | 全部 |
+| `AGENT_DB_POOL_SIZE` | `--db-pool-size` | `10` | 全部 |
+
+**`--redis` 没有命令行参数是故意的。** 会话进程与 worker 必须连同一个 Redis，
+连错了的表现是"消息发出去了、永远没有回复"，而两边日志都干干净净。
+一条 `export` 同时喂给两个进程，比在两条命令上各写一遍要可靠。
+
+### 模型
 
 | 变量 | 对应参数 | 默认值 |
 |---|---|---|
-| `AGENT_JDBC_URL` | `--jdbc-url` | `jdbc:postgresql://localhost:5432/agent` |
-| `AGENT_DB_USER` | `--db-user` | `agent` |
-| `AGENT_DB_PASSWORD` | `--db-password` | 无 |
-| `AGENT_API_KEY` | 模型密钥（也认 `DASHSCOPE_API_KEY` / `OPENAI_API_KEY`） | 无 |
+| `AGENT_API_KEY` | *(无，刻意)* | 无。也认 `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` |
+| `AGENT_PROVIDER` | `--provider` | `auto` |
+| `AGENT_MODEL` | `--model` | `qwen-max` |
 | `AGENT_BASE_URL` | `--base-url` | 无，走提供者默认端点 |
+| `AGENT_ENGINE` | `--engine` | `agentscope` |
+| `AGENT_TOOLS` | `--tools` | `none` |
+| `AGENT_MAX_ITERS` | `--max-iters` | `20` |
+| `AGENT_SYSTEM_PROMPT` | `--system-prompt` | 无 |
+| `AGENT_WORKSPACE` | `--workspace` | `~/.agent-cli/workspace` |
 
 **密码与密钥只能走环境变量**：写在命令行上会进 shell 历史，也会出现在 `ps` 的输出里。
+所以这两项没有对应的命令行参数，不是漏了。
+
+**没有环境变量的参数**：`--user`、`--session`、`--sole`、`--plain`、`--trace`、
+`--capabilities`、`--consumer`、`--concurrency`。它们每次运行都不同，
+放进环境变量只会造出"我明明没加 `--plain`，怎么是逐行模式"这种查半天的现场。
 
 > ⚠️ **IDE 里运行要单独设。** IntelliJ 的运行配置**不继承** shell 的 `export`，
 > 要在「运行配置 → 环境变量」里填。数据库连不上、模型缺 Key 时的报错都会把
@@ -585,21 +662,26 @@ Redis 因此只承担队列与协调结构。已写回规划 B 节修订。
 
 ```bash
 export AGENT_API_KEY=sk-...
-./bin/agent --backend agentscope \
-    --provider openai --base-url https://api.kimi.com/coding/ --model kimi-for-coding
+export AGENT_PROVIDER=openai
+export AGENT_BASE_URL=https://api.kimi.com/coding/
+export AGENT_MODEL=kimi-for-coding
+./bin/agent
 ```
 
-只想验分布式链路、不想调模型时用 `--engine scripted`，它不需要任何 Key。
+只想验分布式链路、不想调模型时用 `--engine scripted`（或 `AGENT_ENGINE=scripted`），
+它不需要任何 Key。
 
-> ⚠️ **`--backend redis` 时，模型参数要配在 worker 上，不是客户端。**
-> 远端模式下客户端只负责收发，推理全在 worker 进程里 ——
+> ⚠️ **`--sole` 时模型参数要配在 worker 上，不是客户端。**
+> 只起客户端时它只负责收发，推理全在外部 worker 进程里 ——
 > `--engine`／`--provider`／`--model`／`--base-url`／`AGENT_API_KEY` 配在客户端一律无效。
-> 症状是"模型好像没换"，而人极难联想到是配错了进程，所以客户端会在启动时点名这些参数。
+> 症状是"模型好像没换"，而人极难联想到是配错了进程 ——
+> 尤其在默认形态下它们**是**生效的，加一个 `--sole` 就悄悄失效了，
+> 所以客户端会在启动时点名这些参数。
 >
 > ```bash
 > ./bin/agent worker --provider openai --base-url https://api.kimi.com/coding/ \
 >     --model kimi-for-coding --tools hotel     # 模型配这里
-> ./bin/agent --backend redis                   # 客户端什么模型参数都不用给
+> ./bin/agent --sole                            # 客户端什么模型参数都不用给
 > ```
 
 ## 环境
