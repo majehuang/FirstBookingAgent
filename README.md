@@ -219,8 +219,10 @@ printf '你好\n/status\n/quit\n' | ./bin/agent --backend redis --db-user admin 
 | 控制帧进入 ctrl-stream（带 ctrlId 水位） | worker |
 | 消息进入 outbox（原始载荷） | worker |
 
-两个进程**同一个开关**：`--trace`。会话侧的逐行模式（`--plain`，管道下自动降级也算）
-会隐含打开它，交互式终端下要显式指定。
+两个进程**同一个开关**：`--trace`。会话侧显式传 `--plain` 时会隐含打开它。
+
+> 注意：管道或 IDE 控制台下终端会**自动降级**成逐行模式，但那不会开启追踪 ——
+> 隐含开启只看 `--plain` 这个标志本身。在 IDEA 里要看追踪，显式加 `--trace`。
 
 ```bash
 export AGENT_DB_USER=admin AGENT_DB_PASSWORD=...   # 一次，两个进程共用
