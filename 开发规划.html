@@ -1,0 +1,1165 @@
+<title>分布式 Agent 服务开发规划</title>
+
+<style>
+  :root {
+    --bg:      #EDEFF1;
+    --surface: #F7F8F9;
+    --sunk:    #E3E6E9;
+    --ink:     #15191E;
+    --ink-2:   #4A545E;
+    --ink-3:   #7B858F;
+    --rule:    #C9CFD5;
+    --rule-2:  #DDE1E5;
+    --steel:   #2F5876;
+    --steel-b: #E0E9F0;
+    --oxide:   #A03D28;
+    --oxide-b: #F2E2DD;
+
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+            "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:      #10141A;
+      --surface: #171C23;
+      --sunk:    #0B0E13;
+      --ink:     #E4E8EC;
+      --ink-2:   #A2ACB6;
+      --ink-3:   #6E7982;
+      --rule:    #2A323B;
+      --rule-2:  #1F262E;
+      --steel:   #7BA6CA;
+      --steel-b: #1A2833;
+      --oxide:   #D8735A;
+      --oxide-b: #2E1C17;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg:      #10141A;
+    --surface: #171C23;
+    --sunk:    #0B0E13;
+    --ink:     #E4E8EC;
+    --ink-2:   #A2ACB6;
+    --ink-3:   #6E7982;
+    --rule:    #2A323B;
+    --rule-2:  #1F262E;
+    --steel:   #7BA6CA;
+    --steel-b: #1A2833;
+    --oxide:   #D8735A;
+    --oxide-b: #2E1C17;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    margin: 0;
+    padding: 0 24px 120px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 960px; margin: 0 auto; }
+  .prose { max-width: 68ch; }
+
+  a { color: var(--steel); text-underline-offset: 3px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--steel); outline-offset: 3px; border-radius: 2px;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { padding: 88px 0 40px; border-bottom: 2px solid var(--ink); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 22px;
+  }
+
+  h1 {
+    font-size: clamp(34px, 5.5vw, 52px);
+    line-height: 1.08;
+    letter-spacing: -.028em;
+    font-weight: 800;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0 0 30px;
+  }
+
+  .stack {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    font-family: var(--mono); font-size: 12px;
+  }
+  .stack span {
+    border: 1px solid var(--rule);
+    padding: 4px 9px;
+    color: var(--ink-2);
+    background: var(--surface);
+  }
+
+  /* ---------- section scaffolding ---------- */
+
+  section { padding: 60px 0 0; }
+
+  .sec-head {
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 0 24px;
+    align-items: baseline;
+    border-top: 1px solid var(--rule);
+    padding-top: 22px;
+    margin-bottom: 30px;
+  }
+  .sec-head .num {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: .1em;
+    color: var(--steel);
+    padding-top: 6px;
+  }
+  .sec-head h2 {
+    font-size: 27px;
+    letter-spacing: -.022em;
+    font-weight: 750;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .sec-head .sub {
+    grid-column: 2;
+    font-size: 15px;
+    color: var(--ink-2);
+    margin: 8px 0 0;
+    max-width: 62ch;
+  }
+
+  .body-col { display: grid; grid-template-columns: 76px 1fr; gap: 0 24px; }
+  .body-col > .rail { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+
+  @media (max-width: 700px) {
+    .sec-head, .body-col { grid-template-columns: 1fr; gap: 10px; }
+    .sec-head .sub { grid-column: 1; }
+    body { font-size: 16px; padding: 0 18px 90px; }
+  }
+
+  /* ---------- phase ---------- */
+
+  .phase {
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 0 24px;
+    border-top: 1px solid var(--rule-2);
+    padding: 30px 0;
+  }
+  .phase:last-of-type { border-bottom: 1px solid var(--rule-2); }
+
+  .phase .marker { font-family: var(--mono); padding-top: 2px; }
+  .phase .marker .p {
+    display: block;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -.03em;
+    color: var(--steel);
+  }
+  .phase .marker .size {
+    display: block;
+    font-size: 11px;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    margin-top: 8px;
+  }
+
+  .phase h3 {
+    font-size: 21px;
+    letter-spacing: -.018em;
+    font-weight: 700;
+    margin: 0 0 6px;
+  }
+  .phase .goal { color: var(--ink-2); margin: 0 0 18px; max-width: 64ch; font-size: 16px; }
+
+  .block { margin: 0 0 16px; }
+  .block > .lbl {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: block;
+    margin-bottom: 7px;
+  }
+  .block ul { margin: 0; padding-left: 20px; }
+  .block li { margin-bottom: 4px; }
+  .block p { margin: 0; }
+
+  .accept {
+    background: var(--surface);
+    border: 1px solid var(--rule-2);
+    padding: 13px 16px;
+    font-size: 15px;
+  }
+  .accept .lbl { color: var(--steel); }
+
+  /* ---------- invariant tags ---------- */
+
+  .inv {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    color: var(--oxide);
+    background: var(--oxide-b);
+    border: 1px solid var(--oxide);
+    padding: 1px 6px;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+  a.inv:hover { background: var(--oxide); color: var(--bg); }
+
+  .risk { font-size: 15px; color: var(--ink-2); }
+  .risk .lbl { color: var(--oxide); }
+
+  /* ---------- tables ---------- */
+
+  .tbl-wrap { overflow-x: auto; margin: 0 0 8px; -webkit-overflow-scrolling: touch; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 520px;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px 10px 0;
+    border-bottom: 1px solid var(--rule-2);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td code, p code, li code, .accept code {
+    font-family: var(--mono);
+    font-size: .87em;
+    background: var(--sunk);
+    padding: 1px 5px;
+    color: var(--ink);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+
+  table.inv-table td:first-child { white-space: nowrap; padding-right: 18px; }
+
+  /* ---------- pre ---------- */
+
+  pre {
+    background: var(--sunk);
+    border: 1px solid var(--rule-2);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    padding: 15px 17px;
+    overflow-x: auto;
+    margin: 0 0 16px;
+    color: var(--ink-2);
+    -webkit-overflow-scrolling: touch;
+  }
+  pre b { color: var(--ink); font-weight: 600; }
+  pre i { color: var(--oxide); font-style: normal; }
+
+  /* ---------- decision list ---------- */
+
+  .decide { border-top: 1px solid var(--rule-2); padding: 18px 0; }
+  .decide:last-child { border-bottom: 1px solid var(--rule-2); }
+  .decide h4 {
+    font-size: 17px; font-weight: 700; margin: 0 0 5px; letter-spacing: -.012em;
+  }
+  .decide h4 .k {
+    font-family: var(--mono); font-size: 12px; color: var(--steel);
+    letter-spacing: .08em; margin-right: 10px; font-weight: 600;
+  }
+  .decide p { margin: 0; color: var(--ink-2); font-size: 15px; max-width: 64ch; }
+  .decide .why { color: var(--oxide); }
+
+  /* ---------- notdo ---------- */
+
+  .notdo { display: grid; gap: 0; }
+  .notdo div {
+    border-top: 1px solid var(--rule-2);
+    padding: 13px 0;
+    display: grid;
+    grid-template-columns: minmax(180px, 260px) 1fr;
+    gap: 6px 24px;
+    font-size: 15px;
+  }
+  .notdo div:last-child { border-bottom: 1px solid var(--rule-2); }
+  .notdo .what { font-weight: 650; }
+  .notdo .why { color: var(--ink-2); }
+  @media (max-width: 620px) { .notdo div { grid-template-columns: 1fr; } }
+
+  hr.hairline { border: none; border-top: 1px solid var(--rule); margin: 0; }
+
+  .foot {
+    margin-top: 64px; padding-top: 22px;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    display: flex; flex-wrap: wrap; gap: 6px 28px;
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">开发规划 · 六阶段 · 依赖有序 · 企业内部部署</p>
+    <h1>分布式 Agent 服务开发规划</h1>
+    <p class="standfirst">
+      HarnessAgent 单例负责推理，你的代码负责分布式调度与消息投递。
+      两者的边界只有一行 <code>streamEvents()</code>——边界越干净，多端、漂移、唤醒的问题就越不需要在 Agent 层解决。
+    </p>
+    <div class="stack">
+      <span>AgentScope Java v2</span>
+      <span>Redis 6.2+</span>
+      <span>Spring WebFlux</span>
+      <span>Lettuce Reactive</span>
+      <span>无多租户</span>
+      <span>约 14–15 人周 / 2–3 人</span>
+    </div>
+  </header>
+
+  <!-- ============ A 约束 ============ -->
+  <section>
+    <div class="sec-head">
+      <div class="num">A</div>
+      <h2>已确定的项目约束</h2>
+      <p class="sub">六项开工前决策已定。其中 D2 改变了存储分层，D5 与 D6 的组合产生了一条键命名的硬约束。</p>
+    </div>
+
+    <div class="body-col">
+      <div class="rail"></div>
+      <div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th></th><th>决定</th><th>后果</th></tr></thead>
+            <tbody>
+              <tr><td><b>D1</b></td><td>企业内部，不做多租户</td><td><code>userId</code> 即员工 id，不折进 <code>sessionId</code>；准入层不做租户配额</td></tr>
+              <tr><td><b>D2</b></td><td><b>用户可见消息单独存储；推理事件只做日志</b></td><td>存储四层分离。消息表是真相源，<b>不再从 AgentState 重建</b></td></tr>
+              <tr><td><b>D3</b></td><td>卡片内容冻结</td><td>补全后的完整卡片落库，重开会话不重查。UI 需标注数据时间</td></tr>
+              <tr><td><b>D4</b></td><td>本次不用沙箱</td><td>去掉 <code>SandboxSnapshotSpec</code> / <code>SandboxExecutionGuard</code> 整条链路</td></tr>
+              <tr><td><b>D5</b></td><td><b>阿里云 Redis，7.0，优先标准版</b></td><td>键名保留 hash tag：标准版零成本，将来迁集群版不用改</td></tr>
+              <tr><td><b>D6</b></td><td>用 Lua 保证原子</td><td>摘牌可原子（同槽）；投递因 <code>ready</code> 不分片而退化为两条命令，见 C 节</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="decide" style="margin-top:26px">
+          <h4><span class="k">待定</span>workspace 文件系统方案</h4>
+          <p><b>"不用沙箱"不等于"不用分布式文件系统"。</b> <code>HarnessAgent</code> 默认开启双层长期记忆，
+          会往 workspace 写 <code>MEMORY.md</code> 与 <code>memory/YYYY-MM-DD.md</code>。
+          <span class="why">多 pod 下用本地文件系统会让记忆按 pod 分叉。</span></p>
+          <p style="margin-top:9px">
+            <b>A</b> 关掉长期记忆，workspace 退化为只读种子目录——最简单，失去跨 session 记忆沉淀。<br>
+            <b>B</b> <code>RemoteFilesystemSpec</code> + <code>BaseStore</code>（Redis），<code>IsolationScope.USER</code>——多 pod 共享记忆，不涉及沙箱，比沙箱轻得多。
+          </p>
+          <p style="margin-top:9px">企业内部助手场景推荐 <b>B</b>。此项在 P0 前定。</p>
+        </div>
+
+        <div class="decide">
+          <h4><span class="k">已核实</span>阿里云选型结论</h4>
+          <p><b><code>EVAL</code> / <code>EVALSHA</code> 完全支持</b>，原先的阻塞项解除。剩下的是选型决策。</p>
+
+          <p style="margin-top:16px"><b>1 · 引擎版本必须买 7.0</b><br>
+          阿里云提供 7.0 / 6.0 / 5.0 / 4.0，<b>没有 6.2 这一档</b>，而 <code>XAUTOCLAIM</code> 与 <code>MINID</code> 都是 6.2 引入：</p>
+          <div class="tbl-wrap" style="margin-top:8px">
+            <table>
+              <thead><tr><th>版本</th><th>XAUTOCLAIM</th><th>MINID</th><th>结论</th></tr></thead>
+              <tbody>
+                <tr><td>阿里云 6.0</td><td>✕</td><td>✕</td><td class="why"><b>整个回收机制无法实现</b></td></tr>
+                <tr><td>阿里云 7.0</td><td>✓</td><td>✓</td><td>可用，另含 <code>SSUBSCRIBE</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p style="margin-top:20px"><b>2 · 架构优先选标准版（主从），而非集群版</b><br>
+          Lua 的槽约束<b>只存在于集群架构</b>：</p>
+          <div class="tbl-wrap" style="margin-top:8px">
+            <table>
+              <thead><tr><th></th><th>标准版（主从）</th><th>集群版</th></tr></thead>
+              <tbody>
+                <tr><td><code>KEYS</code> 数组强制</td><td>否</td><td><b>是</b>（不能写死 key 名或用 Lua 变量拼 key）</td></tr>
+                <tr><td>同 slot 强制</td><td>否</td><td><b>是</b>（否则 <code>ERR … keys must be in same slot</code>）</td></tr>
+                <tr><td><code>numkeys &gt; 0</code> 强制</td><td>否</td><td><b>是</b></td></tr>
+                <tr><td>Proxy 额外语法检查</td><td>无</td><td>有（禁嵌套 <code>redis.call</code>、禁非字面量命令名）</td></tr>
+                <tr><td>hash tag</td><td>退化为普通字符，<b>零成本</b></td><td>必需</td></tr>
+                <tr><td>容量</td><td>单实例最大 64GB</td><td>可水平扩</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top:12px">企业内部量级（几千并发连接、几百并发 turn）标准版绰绰有余，且省掉一整类槽约束问题。
+          <b><code>{s07}</code> hash tag 照样保留</b>——标准版上无害，将来迁集群版不用改键名。</p>
+          <p style="margin-top:9px">若最终仍选集群版：<b>用直连模式，不要代理模式</b>。直连下 Lettuce 原生处理槽路由，
+          Lua 只受数据节点检查（宽松）；代理模式的额外语法检查只会带来惊喜。</p>
+
+          <p style="margin-top:20px"><b>3 · 现有两个脚本已符合集群约束</b></p>
+          <div class="tbl-wrap" style="margin-top:8px">
+            <table>
+              <thead><tr><th>脚本</th><th>KEYS 传参</th><th>同槽</th><th>嵌套调用</th><th>结论</th></tr></thead>
+              <tbody>
+                <tr><td>摘牌（lease + inbox）</td><td>✓</td><td><code>{s07}</code> 保证</td><td>无</td><td>合规</td></tr>
+                <tr><td>ctrl 状态（state + ctrl-stream）</td><td>✓</td><td><code>{s07}</code> 保证</td><td>无</td><td>合规</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top:12px">投递侧已改为两条普通命令（因 <code>ready</code> 不分片），
+          Lua 只剩这两个同 session 脚本，风险面很小。</p>
+
+          <p class="why" style="margin-top:20px"><b>4 · 仍需实测一项</b>：脚本内的 <code>XADD … *</code>（非确定性 ID 生成）。
+          文档未明确列为禁用，Redis 5+ 走效果复制理论上可行，但代理模式检查更严。
+          开个测试实例跑一次 ctrl 脚本验证，几分钟的事。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ B 存储 ============ -->
+  <section>
+    <div class="sec-head">
+      <div class="num">B</div>
+      <h2>存储分层</h2>
+      <p class="sub">四层，职责不重叠。D2 确定后，消息表成为真相源，outbox 退化为实时推送与短期续传的缓存。</p>
+    </div>
+
+    <div class="body-col">
+      <div class="rail"></div>
+      <div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>存储</th><th>内容</th><th>保留</th><th>角色</th></tr></thead>
+            <tbody>
+              <tr><td><b>消息表</b>（DB）</td><td>用户可见消息，卡片内容已冻结</td><td>长期</td><td><b>真相源</b>：历史拉取、超窗重放</td></tr>
+              <tr><td><b>outbox</b>（Stream）</td><td>同一批消息的打包副本</td><td><b>5–10 分钟</b></td><td>实时推送、跨 pod 扇出、断线重放</td></tr>
+              <tr><td><b>事件日志</b>（冷存储）</td><td>全量 <code>AgentEvent</code></td><td>按合规要求</td><td>排查与分析，异步写，不阻塞 turn</td></tr>
+              <tr><td><b>AgentState</b>（Redis）</td><td>模型上下文</td><td>随 session</td><td>框架自管，与客户端消息无关</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="margin-top:20px"><b>写入顺序固定：消息表 → outbox →（异步）事件日志。</b><br>
+        <span style="color:var(--ink-2)">反序会导致"用户看到了、刷新后消失"——持久化必须先于可见。</span></p>
+
+        <h3 style="font-size:17px;margin:26px 0 8px;letter-spacing:-.012em">消息序号与重连协议</h3>
+        <p style="color:var(--ink-2);max-width:64ch;margin:0 0 12px">
+          每 session 一个<b>单调递增且无洞</b>的 <code>msgSeq</code>，同时充当消息表主键的一部分与 SSE 的 <code>id</code>。
+          不能用 DB 全局自增主键——多 session 交错会让每个 session 看到的序号是断的。
+        </p>
+        <p style="max-width:64ch;margin:0 0 14px">
+          <b>客户端连接时不带任何位置参数</b>，服务端把 outbox 窗口内的消息全量重放。
+          去重与空窗判定由客户端完成——这是<b>正确性的一部分，不是可选优化</b>：
+        </p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>收到的 seq</th><th>客户端动作</th></tr></thead>
+            <tbody>
+              <tr><td>≤ 本地最大 seq</td><td><b>丢弃</b>（重放重复）</td></tr>
+              <tr><td>== 本地最大 + 1</td><td><b>追加</b></td></tr>
+              <tr><td>&gt; 本地最大 + 1</td><td><b>清空渲染缓冲 → 拉取历史 → 重建 → 再接后续帧</b></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="color:var(--ink-2);max-width:64ch;margin:14px 0 0">
+          第 3 条同时覆盖首次加载（本地最大 = 0，首帧 seq 必然远大于 1）——
+          <b>首次打开与空窗恢复走同一条路径</b>，客户端不需要区分。
+        </p>
+        <p class="risk" style="margin-top:14px">
+          <span class="lbl" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em">注意 · </span>
+          <b>"清空"后面必须跟着"拉取"</b>：只清空会让用户看到空白页。完整动作是
+          清空缓冲 → <code>GET /sessions/{sid}/messages?since=…</code> → 用结果重建。
+        </p>
+        <p style="color:var(--ink-2);max-width:64ch;margin:12px 0 0">
+          <b>洞是可自愈的</b>：若落库成功但 <code>XADD</code> 失败，stream 里会缺一个 seq，
+          客户端判定为空窗后走拉取，消息表里那条记录还在，能补上。前提是 INV-5 的"先落库后 XADD"。
+        </p>
+
+        <h3 style="font-size:17px;margin:30px 0 8px;letter-spacing:-.012em">控制通道的重连协议</h3>
+        <p style="color:var(--ink-2);max-width:64ch;margin:0 0 12px">
+          控制状态是 LWW 快照，但<b>每次变更都追加一帧到 <code>ctrl-stream</code></b>——
+          这样一闪而过的瞬时信号（<code>stopping</code>、<code>supersededReplyId</code>）不会被轮询窗口漏掉。
+        </p>
+        <p style="max-width:64ch;margin:0 0 14px">
+          快照与流位置必须严格对齐，否则会<b>状态翻转</b>：快照代表 T2 的状态，重放却从 T1 开始，旧帧覆盖新状态。
+          对齐方式是把水位写进状态自身，且与 <code>XADD</code> 在同一个 Lua 脚本内产生。
+        </p>
+<pre><i>-- KEYS[1] = {s07}:sess:&lt;sid&gt;:state
+-- KEYS[2] = {s07}:sess:&lt;sid&gt;:ctrl-stream      ← 同槽，靠 {s07} 保证
+-- ARGV[1] = JSON patch   ARGV[2] = ttl 秒</i>
+local cur = redis.call('GET', KEYS[1])
+local obj = cur and cjson.decode(cur) or {}
+for k, v in pairs(cjson.decode(ARGV[1])) do
+    if v == cjson.null then obj[k] = nil else obj[k] = v end
+end
+
+local id = redis.call('XADD', KEYS[2], 'MAXLEN', '~', 200, '*', 'f', cjson.encode(obj))
+
+obj.ctrlId = id                                  <b>-- ★ 水位写回状态自身</b>
+redis.call('SET',    KEYS[1], cjson.encode(obj), 'EX', tonumber(ARGV[2]))
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[2]))
+return cjson.encode(obj)</pre>
+        <p style="margin:0 0 12px">建连三步：</p>
+<pre>1. GET state                          → <b>完整帧 + ctrlId 水位</b>
+2. 下发快照
+3. XREAD STREAMS ctrl-stream &lt;ctrlId&gt;  → <b>开区间，只拿水位之后的</b></pre>
+        <p style="color:var(--ink-2);max-width:64ch;margin:0">
+          因为 <code>ctrlId</code> 与 <code>XADD</code> 原子产生，
+          <b>快照与流位置严格对应——既不漏也不重</b>，翻转在结构上被排除。
+        </p>
+        <p class="risk" style="margin-top:12px">
+          <span class="lbl" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em">待实测 · </span>
+          <code>XADD</code> 用 <code>*</code> 生成 ID 属于非确定性命令。Redis 5+ 走效果复制没问题，
+          但云产品若有额外限制需实测。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ C 键命名 ============ -->
+  <section>
+    <div class="sec-head">
+      <div class="num">C</div>
+      <h2>Redis 键命名规范</h2>
+      <p class="sub">在 P0 一次定死。分片数 256 永不修改——修改等于数据迁移。</p>
+    </div>
+
+    <div class="body-col">
+      <div class="rail"></div>
+      <div>
+<pre>s07 = hash(sessionId) % 256      <i>← hash tag，让同一 session 的几个 key 落在同一个槽</i></pre>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>键</th><th>类型</th><th>用途</th><th>保留</th></tr></thead>
+            <tbody>
+              <tr><td><code>{s07}:sess:&lt;sid&gt;:inbox</code></td><td>Stream</td><td>有序指令队列（消息 + 控制）</td><td>按条数或时间裁剪</td></tr>
+              <tr><td><code>{s07}:sess:&lt;sid&gt;:outbox</code></td><td>Stream</td><td>客户端消息批</td><td>5–10 分钟，受 <code>turnStartId</code> 保护</td></tr>
+              <tr><td><code>{s07}:sess:&lt;sid&gt;:cursor</code></td><td>Hash</td><td><code>msg</code> / <code>ctrl</code> 两个游标</td><td><b>≥ inbox 保留期</b></td></tr>
+              <tr><td><code>{s07}:sess:&lt;sid&gt;:lease</code></td><td>String</td><td>执行权，值每次抢占唯一</td><td><code>PX 30000</code>，每 10s 续</td></tr>
+              <tr><td><code>{s07}:sess:&lt;sid&gt;:state</code></td><td>String</td><td>控制状态快照，含 <code>ctrlId</code> 水位</td><td>随 session</td></tr>
+              <tr><td><code>{s07}:sess:&lt;sid&gt;:ctrl-stream</code></td><td>Stream</td><td>控制状态帧序列，每次变更追加一帧</td><td><code>MAXLEN ~ 200</code> + TTL</td></tr>
+              <tr><td><code>ready</code>（<b>不分片</b>）</td><td>Stream + 消费组</td><td>全局唤醒令牌队列，<code>XREADGROUP</code> 抢占</td><td><code>MAXLEN ~ 100000</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="margin-top:20px"><b>分片的作用</b>：让同一 session 的几个 key 同槽，使摘牌脚本可以原子执行。</p>
+<pre>摘牌脚本（原子，同槽）： 校验 {s07}:sess:abc:lease  +  检查 {s07}:sess:abc:inbox  →  DEL lease</pre>
+        <p style="max-width:64ch;margin:0 0 12px">
+          <b><code>ready</code> 刻意不分片</b>——换来的是每个 pod 只监听一条 stream、只占一条阻塞连接。
+          代价是投递侧无法原子（<code>ready</code> 与 <code>inbox</code> 必然不同槽），退化为两条命令，<b>顺序不可颠倒</b>：
+        </p>
+<pre>1. XADD {s07}:sess:abc:inbox &lt;msg&gt;      <i>← 必须先</i>
+2. XADD ready &lt;sid&gt;                     <i>← 后</i>
+<b>两条都成功才返回 202；任一失败返回 5xx</b></pre>
+        <p style="color:var(--ink-2);max-width:64ch">
+          崩在两条之间时客户端收不到 202，会带同一 <code>instructionId</code> 重试，两条重新写入，重复由幂等检查吃掉。
+          <b>这把投递可靠性挪到了客户端重试约定上，必须写进协议文档。</b>
+        </p>
+
+        <p class="risk" style="margin-top:16px">
+          <span class="lbl" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em">陷阱 · </span>
+          <code>cursor</code> 的 TTL 短于 <code>inbox</code> 保留期时，空闲久的 session 被唤醒会从头重放全部历史指令。
+          最省事的做法是 cursor 不设 TTL，随 session 一起显式清理。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ D 模块划分 ============ -->
+  <section>
+    <div class="sec-head">
+      <div class="num">D</div>
+      <h2>系统模块划分</h2>
+      <p class="sub">三层。模块之间没有任何直接调用，全部通过 Redis 交换数据——这是通信层与任务层可以独立部署、独立扩容的前提。</p>
+    </div>
+
+    <div class="body-col">
+      <div class="rail"></div>
+      <div>
+<pre>┌─ 客户端 ──────────────────────────────────────────────────────────┐
+│  POST /messages   POST /control  │  GET /events(msg)  GET /ctrl   │
+└───────────┬──────────────────────┴──────────────────▲─────────────┘
+            │                                         │
+┌───────────▼─────────────────────────────────────────┴─────────────┐
+│  <b>通信层</b>            〔可独立部署 · 按并发 SSE 连接数扩容〕            │
+│  ┌─ <b>收消息模块</b> ──────────────┐  ┌─ <b>发消息模块</b> ─────────────────┐  │
+│  │ 鉴权 / 参数校验            │  │ msg SSE：建连全量重放         │  │
+│  │ 写 inbox → 写 ready        │  │ ctrl SSE：快照 + 水位 + 重放  │  │
+│  │ <i>准入限流（ready 队列长度）</i>  │  │ 非阻塞轮询 outbox / ctrl-stream│ │
+│  │ 幂等键校验                 │  │ 历史拉取（直读消息表）        │  │
+│  └────────────────────────────┘  └───────────────────────────────┘ │
+└───────────┬─────────────────────────────────────────▲─────────────┘
+            │ 只写                                 只读 │
+┌───────────▼─────────────────────────────────────────┴─────────────┐
+│                            <b>Redis</b>                                   │
+│   ready │ inbox │ outbox │ ctrl-stream │ state │ cursor │ lease    │
+└───────────▲─────────────────────────────────────────┬─────────────┘
+            │ 消费 / 抢占                           写 │
+┌───────────┴─────────────────────────────────────────▼─────────────┐
+│  <b>任务层</b>            〔可独立部署 · 按并发 turn 数扩容〕               │
+│  ┌─ <b>任务控制模块</b>（每 pod 一个）──────────────────────────────────┐ │
+│  │ XREADGROUP 消费 ready                                        │ │
+│  │ consumer 生命周期：注册 / XCLAIM 心跳 / DELCONSUMER 清理       │ │
+│  │ XAUTOCLAIM 过期回收（启动一次 + 每 30s）                       │ │
+│  │ <i>在飞任务上限：满则停止消费，认领数 = 空闲槽位数</i>                 │ │
+│  │ 抢 lease → 启动 Worker                                        │ │
+│  └───────────────────────────┬───────────────────────────────────┘ │
+│                              │ 每个任务一个，用完即散                │
+│  ┌───────────────────────────▼───────────────────────────────────┐ │
+│  │ <b>Worker 模块</b>                                                    │ │
+│  │ session 初始化 · lease 续期 · inbox/outbox 管道装配             │ │
+│  │ 双游标（msg / ctrl）· IMMEDIATE 打断扫描 · 幂等去重             │ │
+│  │ AgentEvent 分流：                                              │ │
+│  │   状态事件  → ctrl-stream + state 快照（Lua 原子）              │ │
+│  │   消息/工具 → 消息表 → outbox（<i>先落库后 XADD</i>）                  │ │
+│  │   全量事件  → 冷存储日志（异步旁路）                            │ │
+│  └───────────────────────────┬───────────────────────────────────┘ │
+└──────────────────────────────┼─────────────────────────────────────┘
+                               │ streamEvents(msg, RuntimeContext)
+┌──────────────────────────────▼─────────────────────────────────────┐
+│  <b>Agent 层</b>          〔进程内，随任务层一起部署〕                      │
+│  HarnessAgent 单例（无状态引擎）                                     │
+│  ┌─ <b>工具模块</b> ──────────────────────────────────────────────────┐   │
+│  │ 业务查询工具   search_hotels / lookup_* …                    │   │
+│  │ 消息表达工具   send_hotel_cards（tool）+ CardMiddleware       │   │
+│  │                <i>—— 一种富消息 = 一个 tool + 一个 middleware</i>     │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│  上下文分层管理〔本期不含〕     上下文压缩策略〔本期不含〕            │
+└────────────────────────────────────────────────────────────────────┘</pre>
+
+        <h3 style="font-size:17px;margin:30px 0 10px;letter-spacing:-.012em">模块职责与边界</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>模块</th><th>职责</th><th>碰哪些存储</th><th>扩容依据</th></tr></thead>
+            <tbody>
+              <tr><td><b>收消息模块</b></td><td>鉴权、校验、写 inbox+ready、准入限流</td><td>Redis（只写 inbox / ready）</td><td>请求 QPS</td></tr>
+              <tr><td><b>发消息模块</b></td><td>两条 SSE 的建连与推送、历史拉取</td><td>Redis（只读 outbox / ctrl-stream / state）+ 消息表（只读）</td><td><b>并发 SSE 连接数</b></td></tr>
+              <tr><td><b>任务控制模块</b></td><td>ready 消费、consumer 生命周期、回收清理、在飞上限</td><td>Redis（ready 消费组 + lease）</td><td>每 pod 一个实例</td></tr>
+              <tr><td><b>Worker 模块</b></td><td>session 生命周期、双游标、事件分流与落库</td><td>Redis（全部）+ 消息表（写）+ 冷存储（写）</td><td><b>并发 turn 数</b></td></tr>
+              <tr><td><b>工具模块</b></td><td>业务查询、富消息表达（tool + middleware 成对）</td><td>业务库 / 业务接口</td><td>随任务层</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="font-size:17px;margin:30px 0 10px;letter-spacing:-.012em">模块间契约就是键命名规范</h3>
+        <p style="max-width:64ch;margin:0 0 12px">
+          模块之间<b>没有 RPC、没有服务发现、没有共享内存</b>——接口就是 C 节那张 key 表。
+          新增模块只需要知道读写哪些 key，不需要认识任何其他模块。
+        </p>
+        <p class="risk">
+          <span class="lbl" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em">守住 · </span>
+          <b>任何模块间的直接调用都是设计外的。</b>一旦出现，独立部署和独立扩容就没了。
+        </p>
+
+        <h3 style="font-size:17px;margin:30px 0 10px;letter-spacing:-.012em">是否拆分部署</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th></th><th>合并部署（一个服务）</th><th>拆分部署（通信层 / 任务层）</th></tr></thead>
+            <tbody>
+              <tr><td>适用</td><td>P1–P3 开发期、小规模</td><td>生产环境</td></tr>
+              <tr><td>扩容</td><td>一起扩，按较大的那个维度</td><td><b>各自按自己的维度扩</b></td></tr>
+              <tr><td>隔离</td><td>LLM 慢会影响 SSE 推送线程</td><td>互不影响</td></tr>
+              <tr><td>运维</td><td>一套</td><td>两套</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="color:var(--ink-2);max-width:64ch;margin:14px 0 0">
+          拆分的实际价值在于<b>两个维度不成比例</b>：1000 个用户挂着 SSE 连接，同时可能只有 50 个在等回复。
+          合并部署时你得按 1000 扩容，任务层跟着白扩。
+        </p>
+        <p style="max-width:64ch;margin:12px 0 0">
+          <b>建议 P1–P4 合并部署，P5 之后视连接规模决定是否拆。</b>
+          因为模块间只经由 Redis 通信，拆分不需要改任何代码，只是打不同的启动参数。
+        </p>
+
+        <h3 style="font-size:17px;margin:30px 0 10px;letter-spacing:-.012em">模块 × 阶段矩阵</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>模块</th><th>P0</th><th>P1</th><th>P2</th><th>P3</th><th>P4</th><th>P5</th><th>P6</th></tr></thead>
+            <tbody>
+              <tr><td>收消息模块</td><td>协议 v1</td><td>POST → inbox+ready</td><td>—</td><td>投递顺序 + 重试约定</td><td>—</td><td>POST /control</td><td><b>准入限流 A</b></td></tr>
+              <tr><td>发消息模块</td><td>—</td><td>msg SSE 全量重放</td><td>—</td><td>—</td><td>历史拉取接口</td><td>ctrl SSE 快照+水位</td><td>—</td></tr>
+              <tr><td>任务控制模块</td><td>—</td><td>简易消费循环</td><td>—</td><td><b>消费组 / 心跳 / 回收 / 清理 / 上限</b></td><td>—</td><td>—</td><td>并发上限 B</td></tr>
+              <tr><td>Worker 模块</td><td>—</td><td>drain + outbox 写入</td><td>适配层接入</td><td>lease 续期 / 双游标 / 幂等</td><td>turnStartId 保护</td><td>ctrl 分流 / 打断</td><td>429 降级</td></tr>
+              <tr><td>工具模块</td><td>—</td><td>—</td><td><b>业务工具 + 表达工具 + middleware</b></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td>Agent 装配</td><td>单例 + store</td><td>—</td><td>—</td><td>CAS</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td>Skill 仓库</td><td colspan="7">∥ 并行轨道，P1 之后任意时间</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="color:var(--ink-2);max-width:64ch;margin:14px 0 0">
+          粗体是该模块的<b>主投入阶段</b>。任务控制模块的复杂度几乎全部集中在 P3——
+          这也是 P3 成为最高风险阶段的原因。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ E 阶段 ============ -->
+  <section>
+    <div class="sec-head">
+      <div class="num">E</div>
+      <h2>六个阶段</h2>
+      <p class="sub">严格依赖有序：每一阶段都建立在前一阶段的验收之上。规模按 2–3 人小组的人周估算。</p>
+    </div>
+
+    <div class="phase">
+      <div class="marker"><span class="p">P0</span><span class="size">1 人周</span></div>
+      <div>
+        <h3>地基</h3>
+        <p class="goal">单机跑通 HarnessAgent，把所有"上线后改不了"的约定锁死。</p>
+        <div class="block">
+          <span class="lbl">交付</span>
+          <ul>
+            <li><b>向云厂商确认 Redis 三项</b>（版本 / Cluster / Lua 开放）——最先做</li>
+            <li>确定 workspace 文件系统方案（关记忆 或 <code>RemoteFilesystemSpec</code>）</li>
+            <li>HarnessAgent 单例 Bean + <code>RedisDistributedStore</code>（应用启动时构建一次）</li>
+            <li>客户端全线统一 Lettuce reactive</li>
+            <li>键命名规范落地（含 256 分片 hash tag）</li>
+            <li>消息表 DDL + <code>msgSeq</code> 分配方案</li>
+            <li>客户端消息协议 v1：<code>type</code> 枚举、<code>fallbackText</code> 必填、能力协商</li>
+          </ul>
+        </div>
+        <div class="block accept">
+          <span class="lbl">验收</span>
+          <p>单进程完成一次多轮对话；进程重启后，相同 <code>(userId, sessionId)</code> 能接着聊。
+          恢复是框架自动的——不需要为此写任何代码。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="marker"><span class="p">P1</span><span class="size">2–3 人周</span></div>
+      <div>
+        <h3>单节点闭环</h3>
+        <p class="goal">POST → inbox → drain → agent → 消息表 → outbox → SSE 全链路打通，先不管多节点。</p>
+        <div class="block">
+          <span class="lbl">交付</span>
+          <ul>
+            <li><code>POST /sessions/{sid}/messages</code> → <code>202 {replyId, msgSeq}</code>，不等 agent 执行</li>
+            <li>inbox（Stream）+ ready（全局 Stream + 消费组）+ lease + drain 循环（此阶段允许非原子摘牌）</li>
+            <li>OutboxWriter：<code>bufferTimeout(64, 80ms)</code> → 合并相邻同 blockId delta → <b>先落消息表 → 后 <code>XADD</code></b></li>
+            <li><code>GET /sessions/{sid}/events</code> 单条 SSE，<code>id</code> = <code>msgSeq</code>；<b>连接不带位置参数，全量重放窗口内消息</b></li>
+            <li>事件日志异步落冷存储（旁路，失败不影响 turn）</li>
+          </ul>
+        </div>
+        <div class="block">
+          <span class="lbl">明确不做</span>
+          <p>多节点、断线降级、控制通道、卡片——全部留给后面阶段。</p>
+        </div>
+        <div class="block accept">
+          <span class="lbl">验收</span>
+          <p>单用户完整对话，文本流式无卡顿（更新频率 10–20 次/秒）；刷新页面能续上。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="marker"><span class="p">P2</span><span class="size">2 人周</span></div>
+      <div>
+        <h3>消息渲染</h3>
+        <p class="goal">文本以外的消息类型端到端：卡片、图片、语音，以及后续扩展的接入流程。</p>
+        <div class="block">
+          <span class="lbl">交付</span>
+          <ul>
+            <li><code>ClientMessage</code> 协议 + <code>render(toolName, payload)</code> 纯函数</li>
+            <li><code>MessageAdapter</code>：per-reply reducer，只累积文本，AgentEnd 时销毁</li>
+            <li>表达型工具（<code>send_hotel_cards</code> 等），返回值带 <code>shown</code> 摘要供模型续接</li>
+            <li><code>onActing</code> middleware：从 <code>ActingInput.toolCalls()</code> 取入参 → 服务端补全 → <code>withMetadataEntry</code></li>
+            <li><b>补全后的完整卡片写入消息表（冻结），永不重查</b></li>
+            <li>卡片 UI 标注数据时间（"数据截至 …"），避免用户误读为实时价</li>
+          </ul>
+        </div>
+        <div class="block accept">
+          <span class="lbl">验收</span>
+          <p>酒店推荐场景：一段推荐理由 + 一个三张卡片的消息组件 + 一句追问，按正确顺序到达。
+          关闭页面重开，卡片内容与首次生成时<b>完全一致</b>。</p>
+        </div>
+        <p class="risk"><span class="lbl" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em">风险 · </span>
+          <a class="inv" href="#inv7">INV-7</a> —— 补全若走阻塞 JDBC，必须显式 <code>subscribeOn(boundedElastic)</code>，否则拖垮整个 pod 的事件循环。
+        </p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="marker"><span class="p">P3</span><span class="size">3–4 人周</span></div>
+      <div>
+        <h3>多节点正确性</h3>
+        <p class="goal">任意 pod 处理任意 session，pod 崩溃自动接管。<b>整个规划里最难、最值得投入测试的一阶段。</b></p>
+        <div class="block">
+          <span class="lbl">交付</span>
+          <ul>
+            <li><b>投递</b>：两条命令，<code>XADD inbox</code> 先、<code>XADD ready</code> 后；两条都成功才返回 202</li>
+            <li><b>摘牌 Lua</b>（同槽，可原子）：校验持有 → 确认 inbox 已抽干 → <code>DEL lease</code>
+              <ul style="margin-top:4px">
+                <li>启动时 <code>SCRIPT LOAD</code>，运行期 <code>EVALSHA</code>；单独成文件并注释为何必须原子</li>
+                <li>用 testcontainers 起真 Redis 写单测</li>
+              </ul>
+            </li>
+            <li><b>消费组初始化</b>：<code>XGROUP CREATE ready workers 0 MKSTREAM</code>，吞掉 <code>BUSYGROUP</code></li>
+            <li><b>consumer 名</b> = pod 名（不加时间戳后缀——同时存活的 pod 本就不会重名，加后缀只会让死 consumer 堆积更快）</li>
+            <li><b>持牌期心跳</b>：与 lease 续租同频（10s）<code>XCLAIM ready workers &lt;自己&gt; 0 &lt;令牌ID&gt; JUSTID</code>，
+                重置 idle 计时且不增加投递计数。没有它，<code>MIN-IDLE-TIME</code> 只能设成大于最长 turn，恢复时延变成分钟级</li>
+            <li><b><code>XAUTOCLAIM</code> 回收</b>：pod 启动时跑一次 + 每 30s 周期跑
+              <ul style="margin-top:4px">
+                <li><code>MIN-IDLE-TIME 60000</code>，<b>不能填 0</b>（会抢走存活 pod 的令牌）</li>
+                <li>循环调用直到返回游标为 <code>0-0</code></li>
+                <li>任意 pod 都跑，幂等，不选主</li>
+              </ul>
+            </li>
+            <li><b>死 consumer 清理</b>：定期 <code>XINFO CONSUMERS</code>，对 idle &gt; 1h <b>且 pending = 0</b> 的执行 <code>XGROUP DELCONSUMER</code>
+              <ul style="margin-top:4px">
+                <li><b>顺序必须是「先 <code>XAUTOCLAIM</code> 捞走工作，后 <code>DELCONSUMER</code> 清元数据」</b></li>
+                <li><code>DELCONSUMER</code> 会连同该消费者的 pending 记录一并销毁，那些条目既不在 PEL 也不是新条目，
+                    <b>从消费组视角彻底消失，无任何报错</b>。<code>pending = 0</code> 不是优化，是安全前提</li>
+              </ul>
+            </li>
+            <li><code>ready</code> 用 <code>MAXLEN ~ 100000</code>——<b><code>XTRIM</code> 不看 PEL，裁小了会在积压时静默丢工作</b></li>
+            <li><b>顺序固定：抽干 → 摘牌（Lua）→ <code>XACK</code> 令牌</b>。先 ACK 再摘牌，崩在中间就没有任何线索</li>
+            <li>lease 抢占（<code>SET NX PX</code>，值每次唯一）+ 每 10s 续租 + <b>续租失败立即中止 turn 并停止写 outbox</b></li>
+            <li>认领数量 = 空闲槽位数（认领即持有，多领等于制造饥饿）</li>
+            <li>两个游标 + <code>instructionId</code> 幂等（对照上下文最后一条 USER 消息去重）</li>
+            <li><code>AgentStateStore</code> 走支持 CAS 的后端，冲突失败重试</li>
+          </ul>
+        </div>
+        <div class="block accept">
+          <span class="lbl">验收</span>
+          <p>混沌测试：持续对话下随机 kill pod、注入 Redis 抖动、模拟长 GC。要求
+          <b>无消息丢失、无重复回复、无 session 永久卡死</b>。优雅停机时用户无感知，硬杀时恢复时延 ≈ lease TTL。</p>
+        </div>
+        <p class="risk"><span class="lbl" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em">风险 · </span>
+          <a class="inv" href="#inv1">INV-1</a> <a class="inv" href="#inv2">INV-2</a>
+          <a class="inv" href="#inv3">INV-3</a> <a class="inv" href="#inv4">INV-4</a>
+          —— 四条不变量全部是"写错了平时看不出、压力下才丢数据"的类型。
+          <b>若云厂商禁用 Lua，本阶段改为兜底扫描方案</b>（另：<code>XREADGROUP</code> 自 Redis 8.4 起支持
+          <code>CLAIM &lt;min-idle-time&gt;</code>，可把认领折进正常读取循环，届时能删掉独立的回收任务；6.2 用不上）（每 60s 扫"inbox 非空且无 lease"的 session 重新入队），最坏延迟约 90 秒。
+        </p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="marker"><span class="p">P4</span><span class="size">1 人周</span></div>
+      <div>
+        <h3>断线重连与一致性</h3>
+        <p class="goal">客户端在任何时刻断开重连，都能无重复、无缺失地接上。</p>
+        <div class="block">
+          <span class="lbl">因两项决定而简化</span>
+          <p>消息单独存储 + 全量重放叠加后，<b>服务端的续传定位逻辑整块删除</b>，本阶段从 2 人周降为 1 人周。</p>
+        </div>
+        <div class="block">
+          <span class="lbl">服务端交付（很薄）</span>
+          <ul>
+            <li>SSE 建连后从 outbox 窗口起点全量重放，<b>不解析任何客户端位置参数</b></li>
+            <li><code>turnStartId</code> 保护：turn 进行中不允许裁剪 outbox</li>
+            <li>历史拉取接口：<code>GET /sessions/{sid}/messages?since=&lt;msgSeq&gt;&amp;limit=</code>，直读消息表</li>
+            <li>outbox 保留窗口收敛到 5–10 分钟（长期历史由消息表兜底）</li>
+            <li>消息表加 <code>superseded</code> 列；拉取接口过滤掉被重跑作废的 <code>replyId</code></li>
+          </ul>
+        </div>
+        <div class="block">
+          <span class="lbl">客户端交付（正确性在这一侧）</span>
+          <ul>
+            <li>三条去重 / 空窗规则（见 B 节），需写成可测试的单元</li>
+            <li>空窗时：清空缓冲 → 拉历史 → 重建 → 接后续帧</li>
+          </ul>
+        </div>
+        <div class="block accept">
+          <span class="lbl">验收</span>
+          <p>turn 进行中反复断网重连，最终文本与不断网时逐字节相同；离线超过 outbox 保留窗口后重连，
+          能从消息表无缝续上，<b>不出现空洞也不出现重复</b>；首次打开会话与空窗恢复走的是同一条代码路径。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="marker"><span class="p">P5</span><span class="size">2 人周</span></div>
+      <div>
+        <h3>控制通道与打断</h3>
+        <p class="goal">停止按钮 1 秒内生效，且崩溃重跑后不会误杀新 turn。</p>
+        <div class="block">
+          <span class="lbl">交付</span>
+          <ul>
+            <li>control SSE 建连三步：下发完整快照（含 <code>ctrlId</code>）→ 从水位之后重放 <code>ctrl-stream</code> → 接后续帧</li>
+            <li>状态变更走 Lua 脚本：合并 patch → <code>XADD</code> 到 ctrl-stream → 水位写回 state，<b>三步原子</b></li>
+            <li>ctrl-stream 读取用<b>非阻塞轮询</b>（200ms）。每条 SSE 各自轮询即可——Lettuce 对非阻塞命令多路复用，不占连接。
+                <b>禁止 <code>XREAD BLOCK</code></b>：阻塞命令必须独占连接，Redis 连接数会随 SSE 连接数线性放大。
+                连接数上千后再改 pod 级批量读，收益是往返次数与多端去重</li>
+            <li>ctrl-stream <code>MAXLEN ~ 200</code> + TTL，与 state key 同生命周期</li>
+            <li>状态帧字段：<code>turnActive</code> / <code>inputAllowed</code> / <code>activeReplyId</code> / <code>phase</code> / <code>stopping</code> / <code>supersededReplyId</code></li>
+            <li>统一 inbox 的指令分类：<code>IMMEDIATE</code>（打断）/ <code>QUEUED</code>（HITL 恢复结果、状态类）</li>
+            <li>pod 级轮询器（同一个 200ms 循环）扫本 pod 持牌 session 的 inbox，只捞 <code>IMMEDIATE</code></li>
+            <li><b>跨节点中断复用 inbox，不额外开 pub/sub</b>：任意 pod 把 cancel 写入 inbox（<code>IMMEDIATE</code> + <code>targetReplyId</code>），
+                持牌 pod 轮询扫到后调 <code>agent.interrupt()</code></li>
+            <li><code>targetReplyId</code> 作用域校验：目标 turn 已不存在则丢弃并推进游标</li>
+            <li>turn 重跑清理：接管方写 <code>supersededReplyId</code>，并把消息表中该 <code>replyId</code> 的行标记 <code>superseded</code></li>
+          </ul>
+        </div>
+        <div class="block accept">
+          <span class="lbl">验收</span>
+          <p>turn 进行中点停止，1 秒内 UI 进入"正在停止"，已生成部分保留；
+          kill 执行节点后重跑，旧的停止指令<b>不会</b>打断新 turn；
+          <b>反复断开重连 control SSE，状态不出现翻转</b>（先看到 <code>turnActive:false</code> 又变回 <code>true</code>）。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="marker"><span class="p">P6</span><span class="size">2 人周</span></div>
+      <div>
+        <h3>容量与降级</h3>
+        <p class="goal">饱和时优雅降级：一部分人排队，其余人全速；而不是所有人都慢。</p>
+        <div class="block">
+          <span class="lbl">交付</span>
+          <ul>
+            <li><b>A 准入</b>：队列深度阈值 → 超限返回 <code>503 + Retry-After</code>（无多租户，不做租户配额）</li>
+            <li><b>B 执行并发</b>：<code>flatMap(…, N)</code>，N 按 LLM 配额倒推（<b>不设的默认值是 256</b>）</li>
+            <li>429 处理：抖动退避（<code>jitter(0.5)</code>，无抖动的退避比不退避更糟）</li>
+            <li><b>首轮 429 退回队列</b>：尚未产出任何用户可见内容时，不推进游标、摘牌走人 → 用户无感</li>
+            <li>模型降级：连续 429 切换到独立配额池的小模型</li>
+            <li>429 率反馈到 A：&gt;20% 收紧准入，&lt;5% 放开——替代全局限流的自适应方案</li>
+            <li>BlockHound 接入集成测试；可观测：队列深度 / <code>inFlight</code> 水位 / 429 率 / 牌子持有时长告警</li>
+          </ul>
+        </div>
+        <div class="block accept">
+          <span class="lbl">验收</span>
+          <p>压测至配额上限：无 turn 永久卡死；超载用户收到 503 而不是超长等待；
+          BlockHound 在集成测试中零告警。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="marker"><span class="p">∥</span><span class="size">0.5 人周</span></div>
+      <div>
+        <h3>并行轨道：Skill 管理</h3>
+        <p class="goal">P1 之后任意时间可做，不阻塞主线。</p>
+        <div class="block">
+          <span class="lbl">交付</span>
+          <ul>
+            <li><code>JdbcSkillRepository</code>：<code>name</code> / <code>description</code> 单独成列，正文与资源分开存</li>
+            <li><b>版本缓存必做</b>——<code>getAllSkills()</code> 是每轮推理的热路径，裸查库会打爆 DB。
+                用 <code>MAX(updated_at)</code> + 行数当版本号，变了才重载</li>
+            <li>生产 <code>writeable(false)</code>；若开 <code>enableSkillManageTool</code>，
+                <b>必须</b>配 <code>enableSkillPromotionGate</code>，严禁 <code>autoPromote=true</code></li>
+            <li>DB 故障降级返回上次快照，不要抛异常——skill 缺失应降级，不该让 turn 挂掉</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ E 不变量 ============ -->
+  <section>
+    <div class="sec-head">
+      <div class="num">F</div>
+      <h2>不变量清单</h2>
+      <p class="sub">跨所有阶段必须成立。每一条都是"违反后平时看不出、压力或故障下才暴露"的类型——建议写进
+      code review checklist。</p>
+    </div>
+
+    <div class="body-col">
+      <div class="rail"></div>
+      <div>
+        <div class="tbl-wrap">
+          <table class="inv-table">
+            <thead><tr><th>编号</th><th>约束</th><th>违反后果</th></tr></thead>
+            <tbody>
+              <tr id="inv1"><td><span class="inv">INV-1</span></td>
+                <td>投递顺序<b>必须 inbox 先、ready 后</b>；两条都成功才返回 202，客户端在超时/5xx 时用同一 <code>instructionId</code> 重试</td>
+                <td>顺序颠倒 → 摘牌脚本检查不到新消息 → 丢唤醒；不重试 → 崩溃缝隙里的消息永久滞留</td></tr>
+              <tr id="inv2"><td><span class="inv">INV-2</span></td>
+                <td>摘牌必须与"确认 inbox 已空"在同一 Lua 脚本内（同槽：lease + inbox）</td>
+                <td>释放瞬间进来的消息无人处理</td></tr>
+              <tr id="inv2b"><td><span class="inv">INV-2b</span></td>
+                <td><code>XAUTOCLAIM</code> 是<b>必交付项</b>：启动跑一次 + 每 30s 周期，<code>MIN-IDLE-TIME</code> 不为 0，循环游标至 <code>0-0</code></td>
+                <td>Redis <b>没有</b> PEL 自动回队机制（官方原话 <i>leave the messages pending forever</i>）。不跑就是静默永久卡死，且 Redis 视角一切正常</td></tr>
+              <tr id="inv2d"><td><span class="inv">INV-2d</span></td>
+                <td><code>DELCONSUMER</code> 只能在 <code>pending = 0</code> 时执行，且必须排在 <code>XAUTOCLAIM</code> 之后</td>
+                <td>有 pending 时删除消费者会连同那些条目一起销毁，工作无声蒸发</td></tr>
+              <tr id="inv2c"><td><span class="inv">INV-2c</span></td>
+                <td>持牌期间用 <code>XCLAIM … JUSTID</code> 给自己的令牌续 idle</td>
+                <td>长 turn 被误回收产生 churn；或被迫把 <code>MIN-IDLE-TIME</code> 设成分钟级</td></tr>
+              <tr id="inv3"><td><span class="inv">INV-3</span></td>
+                <td>lease 值<b>每次抢占唯一</b>（非 pod 名），释放用值比对删除</td>
+                <td>同 pod 的另一个 worker 误摘他人的牌子 → 双跑</td></tr>
+              <tr id="inv4"><td><span class="inv">INV-4</span></td>
+                <td>顺序固定：<b>抽干 → 摘牌 → 交差</b>；续租任务在 <code>doFinally</code> 取消</td>
+                <td>先交差再摘牌 → 崩溃后无人知晓；续租不停 → TTL 保护网失效，永久死锁</td></tr>
+              <tr id="inv5"><td><span class="inv">INV-5</span></td>
+                <td>消息<b>先落库、后 <code>XADD</code></b>；事件日志异步且失败不影响 turn</td>
+                <td>反序 → 用户看到了、刷新后消失；日志同步写 → 冷存储抖动拖垮在线链路</td></tr>
+              <tr id="inv6"><td><span class="inv">INV-6</span></td>
+                <td>outbox 只能裁剪 turn 已结束的部分（<code>turnStartId</code> 保护）</td>
+                <td>长 turn 前半段被裁 → 该 turn 内的续传出现空洞</td></tr>
+              <tr id="inv7"><td><span class="inv">INV-7</span></td>
+                <td>middleware / adapter 中的阻塞调用必须 <code>subscribeOn(boundedElastic)</code></td>
+                <td>占死事件循环线程，全 pod 所有 session 一起卡；症状是吞吐莫名掉到个位数</td></tr>
+              <tr id="inv8"><td><span class="inv">INV-8</span></td>
+                <td>事件管道一律 <code>concatMap</code>；只有 ready 队列消费用 <code>flatMap</code></td>
+                <td>批次乱序写入。小批量时看不出，批稍大就错位</td></tr>
+              <tr id="inv9"><td><span class="inv">INV-9</span></td>
+                <td>所有 Redis key 带 <code>{s&lt;N&gt;}</code> hash tag，分片数 <b>256 永不修改</b></td>
+                <td>Cluster 下 Lua 报 CROSSSLOT；改分片数等于数据迁移</td></tr>
+              <tr id="inv10"><td><span class="inv">INV-10</span></td>
+                <td><code>msgSeq</code> 每 session 独立且单调<b>无洞</b>（不用全局自增）</td>
+                <td>客户端的空窗判定失效 → 要么永远误判要么永远漏判</td></tr>
+              <tr id="inv11"><td><span class="inv">INV-11</span></td>
+                <td>ctrl 水位 <code>ctrlId</code> 必须与 <code>XADD</code> 在<b>同一 Lua 脚本</b>内产生</td>
+                <td>快照与流位置错开 → 重放旧帧覆盖新状态 → <b>状态翻转</b></td></tr>
+              <tr id="inv12"><td><span class="inv">INV-12</span></td>
+                <td>ctrl-stream 只用<b>非阻塞</b> <code>XREAD</code> 轮询，禁止 <code>XREAD BLOCK</code>（轮询粒度随意）</td>
+                <td>阻塞命令独占连接 → Redis 连接数随 SSE 连接数线性放大，几千即打满</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="risk" style="margin-top:16px">
+          <span class="lbl" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em">注 · </span>
+          工具内部的阻塞调用<b>不需要</b>手动 offload——<code>ToolExecutor</code> 已默认
+          <code>subscribeOn(Schedulers.boundedElastic())</code>。INV-7 只针对 middleware 和 adapter。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ F 已定决策 ============ -->
+  <section>
+    <div class="sec-head">
+      <div class="num">G</div>
+      <h2>已经定下的技术决策</h2>
+      <p class="sub">这些已经收敛，不需要重新论证。</p>
+    </div>
+
+    <div class="body-col">
+      <div class="rail"></div>
+      <div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>议题</th><th>选择</th><th>理由</th></tr></thead>
+            <tbody>
+              <tr><td>Redis 最低版本</td><td><b>6.2</b></td><td><code>MINID</code> 按时间裁剪与 <code>XAUTOCLAIM</code> 都是 6.2；7.0 只有分片 pub/sub 需要，用不到</td></tr>
+              <tr><td>原子性实现</td><td><b>Lua 脚本</b></td><td>精确、无浪费。启动 <code>SCRIPT LOAD</code> + 运行期 <code>EVALSHA</code>，testcontainers 写单测</td></tr>
+              <tr><td>键命名</td><td><b><code>{s&lt;N&gt;}</code> hash tag，256 分片</b></td><td>Cluster 下 Lua 必须同槽；同时解决热点分布</td></tr>
+              <tr><td>ready 队列结构</td><td><b>单个全局 Stream + 消费组</b></td><td>每 pod 只监听一条 stream、只占一条阻塞连接</td></tr>
+              <tr><td>ready 是否分片</td><td><b>否</b>（session key 仍 256 分片）</td><td>分片只为让摘牌脚本同槽；ready 分片会让每 pod 监听 N 条 stream</td></tr>
+              <tr><td>投递原子性</td><td><b>放弃</b>，靠客户端重试</td><td>单个 ready 与分片 inbox 必然不同槽；重试约定写进协议文档</td></tr>
+              <tr><td>排他性来源</td><td><b>lease</b>，非读取排他</td><td>多个 pod 读到同一 sid 是预期行为，代价只是两次 <code>SET NX</code></td></tr>
+              <tr><td>消息真相源</td><td><b>消息表（DB）</b></td><td>需要长期重放与分页拉取；outbox 退化为实时推送与短期续传的缓存</td></tr>
+              <tr><td>SSE 的 id</td><td><b>per-session <code>msgSeq</code></b>，无洞</td><td>一个 id 空间覆盖 Stream 与 DB 两个数据源</td></tr>
+              <tr><td>断线重连（消息）</td><td><b>全量重放，客户端去重</b></td><td>服务端不做位置定位；首次加载与空窗恢复统一为一条路径</td></tr>
+              <tr><td>控制通道</td><td><b>快照 + 水位 + 流重放</b></td><td>保证瞬时信号不被轮询窗口漏掉；水位与 <code>XADD</code> 原子产生以防翻转</td></tr>
+              <tr><td>跨节点中断</td><td><b>复用 inbox</b>，不开 pub/sub</td><td>200ms 足够（中断本就在下一个推理迭代边界生效）；少一条与 lease 绑定的订阅生命周期</td></tr>
+              <tr><td>outbox 保留</td><td><b>5–10 分钟</b></td><td>全量重放的成本与窗口成正比；长期历史由消息表兜底</td></tr>
+              <tr><td>outbox 读取</td><td><b>不用</b> consumer group</td><td>扇出语义。用了之后多端登录的两个设备各拿一半事件</td></tr>
+              <tr><td>指令队列</td><td>消息与控制<b>统一进 inbox</b></td><td>一套顺序、一套持久化、一套故障恢复；靠两个游标区分消费时机</td></tr>
+              <tr><td>富消息来源</td><td><b>表达型工具的入参</b></td><td>函数调用是模型受训行为，schema 即契约；不需要解析自由文本或强制 JSON 输出</td></tr>
+              <tr><td>卡片内容</td><td><b>冻结落库</b></td><td>重开会话所见即当时所见；代价是需在 UI 标注数据时间</td></tr>
+              <tr><td>合批窗口</td><td><b>80ms</b></td><td>约 12 次/秒仍然流畅；主要收益是信封开销摊薄与客户端渲染压力，不是 Redis QPS</td></tr>
+              <tr><td>Redis 客户端</td><td><b>Lettuce reactive</b> 全线统一</td><td>Jedis 阻塞；outbox 写入在热路径上，每 80ms 一次 × 每个在飞 turn</td></tr>
+              <tr><td>线程模型</td><td><b>不建 worker 线程池</b></td><td>控制的是并发度不是线程数；turn 绝大部分时间在等网络</td></tr>
+              <tr><td>全局 LLM 限流</td><td><b>先不做</b></td><td>429 处理无论如何都要写；B 已是粗粒度上限；用 429 率反馈到 A 自适应收紧</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ G 不做 ============ -->
+  <section>
+    <div class="sec-head">
+      <div class="num">H</div>
+      <h2>明确不做的事</h2>
+      <p class="sub">列出来是为了避免有人"补全"它们。</p>
+    </div>
+
+    <div class="body-col">
+      <div class="rail"></div>
+      <div class="notdo">
+        <div>
+          <span class="what">沙箱（Docker / K8s / E2B 等）</span>
+          <span class="why">本期不含不可信代码执行。省掉 <code>SandboxSnapshotSpec</code> / <code>SandboxExecutionGuard</code> 与大对象存储整条链路。</span>
+        </div>
+        <div>
+          <span class="what">多租户隔离</span>
+          <span class="why">企业内部系统，<code>userId</code> 即员工 id。准入层不做租户配额。</span>
+        </div>
+        <div>
+          <span class="what">为跨节点中断单开 pub/sub 通道</span>
+          <span class="why">inbox + 200ms 轮询已覆盖。少一个 key、少一条与 lease 绑定的订阅（本身就是泄漏风险）、少一处集群 pub/sub 广播问题。</span>
+        </div>
+        <div>
+          <span class="what">服务端的 SSE 续传定位（按 Last-Event-ID 跳帧）</span>
+          <span class="why">改为全量重放 + 客户端去重。服务端不保存也不解析客户端位置。</span>
+        </div>
+        <div>
+          <span class="what">从 AgentState 重建客户端消息</span>
+          <span class="why">消息已单独存储，<code>render()</code> 只在生成时跑一次，不存在双路径不一致。</span>
+        </div>
+        <div>
+          <span class="what">Agent Factory / Session Factory / Cache / Processer pool</span>
+          <span class="why">v2 的 agent 是无状态引擎，单例服务所有 <code>(userId, sessionId)</code>，state 按需从 store 加载。整层抽象是零代码。</span>
+        </div>
+        <div>
+          <span class="what">Agent 内部的 inbox / outbox / Event Bus</span>
+          <span class="why">与 Session 层重复。且 event bus 会丢掉背压——慢客户端不再传导回读取端，直接 OOM。</span>
+        </div>
+        <div>
+          <span class="what">自研 Interceptor 六钩子</span>
+          <span class="why">用 v2 的 Middleware。自研要重新实现异常传播、短路、排序，而且内置能力全是 middleware，自研就用不上。</span>
+        </div>
+        <div>
+          <span class="what">Message router / Connection Manager 的跨节点路由</span>
+          <span class="why">Redis Stream 扇出替代。SSE 连任意节点都能拿到全部数据，多端登录不需要任何特殊处理。</span>
+        </div>
+        <div>
+          <span class="what">Session Manager</span>
+          <span class="why">"谁拥有 session"这个问题在 lease 模型下消失了。生命周期就是几个 key 的 TTL。</span>
+        </div>
+        <div>
+          <span class="what">工具直接写 outbox</span>
+          <span class="why">会与合批管道形成两个写入者，卡片和文本的交错顺序间歇性错乱——最难查的那种 bug。</span>
+        </div>
+        <div>
+          <span class="what">让模型直接输出客户端消息格式 JSON</span>
+          <span class="why">流式体验丧失、文本质量下降、转义地狱、改协议要改 prompt。走工具调用全部绕开。</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span>估算合计 ≈ 14–15 人周</span>
+    <span>关键路径 P0 → P1 → P3</span>
+    <span>最高风险 P3</span>
+    <span>阻塞项：云 Redis 的 Lua 支持</span>
+  </div>
+
+</div>

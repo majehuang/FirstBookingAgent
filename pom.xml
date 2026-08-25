@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.agentharness</groupId>
+  <artifactId>java-agent-sdk</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>java-agent-sdk</name>
+  <description>分布式 Agent 服务 —— 模块间只经由 Redis 通信，本轮以 CLI/TUI 形态交付</description>
+
+  <modules>
+    <module>agent-protocol</module>
+    <module>agent-keys</module>
+    <module>agent-redis</module>
+    <module>agent-store</module>
+    <module>agent-engine</module>
+    <module>agent-tools</module>
+    <module>agent-comm</module>
+    <module>agent-task</module>
+    <module>agent-tui</module>
+    <module>agent-cli</module>
+  </modules>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <reactor-bom.version>2024.0.6</reactor-bom.version>
+    <jackson-bom.version>2.19.0</jackson-bom.version>
+    <junit-bom.version>5.12.2</junit-bom.version>
+    <jline.version>3.26.3</jline.version>
+    <picocli.version>4.7.7</picocli.version>
+    <lettuce.version>6.7.1.RELEASE</lettuce.version>
+    <agentscope.version>2.0.2</agentscope.version>
+    <postgresql.version>42.7.7</postgresql.version>
+    <assertj.version>3.27.3</assertj.version>
+    <blockhound.version>1.0.17.RELEASE</blockhound.version>
+    <slf4j.version>2.0.17</slf4j.version>
+
+    <surefire.version>3.5.2</surefire.version>
+    <jacoco.version>0.8.12</jacoco.version>
+    <shade.version>3.6.0</shade.version>
+    <enforcer.version>3.5.0</enforcer.version>
+
+    <!-- 覆盖率门禁：见 开发计划.md §4。IO 外壳类不计入，逻辑必须计入 -->
+    <jacoco.line.coverage>0.80</jacoco.line.coverage>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.projectreactor</groupId>
+        <artifactId>reactor-bom</artifactId>
+        <version>${reactor-bom.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson-bom.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit-bom.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- AgentScope Java —— 上游 https://github.com/agentscope-ai/agentscope-java
+           BOM 统一 core / harness / model 扩展的版本。
+           Central 上 <release> 指向的是 2.0.2-subagent-bugfix 这个热修 tag，
+           这里用干净的 2.0.2；确认踩到 subagent 相关问题时再切热修版 -->
+      <dependency>
+        <groupId>io.agentscope</groupId>
+        <artifactId>agentscope-bom</artifactId>
+        <version>${agentscope.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <version>${postgresql.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jline</groupId>
+        <artifactId>jline</artifactId>
+        <version>${jline.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>info.picocli</groupId>
+        <artifactId>picocli</artifactId>
+        <version>${picocli.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.lettuce</groupId>
+        <artifactId>lettuce-core</artifactId>
+        <version>${lettuce.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-nop</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <!-- INV-7 的检测手段：阻塞调用一旦落到非阻塞线程上就当场抛错。
+           比断言线程名硬 —— 后者只能证明"这一处"对，前者能罩住整条调用链 -->
+      <dependency>
+        <groupId>io.projectreactor.tools</groupId>
+        <artifactId>blockhound</artifactId>
+        <version>${blockhound.version}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-protocol</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-keys</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-redis</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-store</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-tools</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-comm</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-task</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-engine</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.agentharness</groupId>
+        <artifactId>agent-tui</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.projectreactor</groupId>
+      <artifactId>reactor-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>${shade.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <compilerArgs>
+            <arg>-parameters</arg>
+            <arg>-Xlint:all,-serial,-processing</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
+        <configuration>
+          <!-- AllowRedefinitionToAddDeleteMethods 是 BlockHound 在 JDK 13+ 上装载所必需的 -->
+          <argLine>@{argLine} -Dfile.encoding=UTF-8 -XX:+AllowRedefinitionToAddDeleteMethods</argLine>
+        </configuration>
+      </plugin>
+
+      <!-- INV: 全线 Lettuce reactive。Jedis 一旦混进依赖树，阻塞调用会悄悄回到热路径 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${enforcer.version}</version>
+        <executions>
+          <execution>
+            <id>ban-blocking-redis-clients</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>redis.clients:jedis</exclude>
+                    <exclude>org.springframework.boot:spring-boot-starter-web</exclude>
+                  </excludes>
+                  <message>禁止引入 Jedis 与 servlet web starter：内核统一 Reactor + Lettuce reactive（见 开发规划.md G 节）</message>
+                </bannedDependencies>
+                <requireMavenVersion><version>[3.8,)</version></requireMavenVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <configuration>
+          <excludes>
+            <!-- 终端与命令行外壳只做 IO 编排，逻辑已全部下沉到可测的纯函数 -->
+            <exclude>io/agentharness/tui/terminal/**</exclude>
+            <exclude>io/agentharness/cli/**</exclude>
+            <exclude>io/agentharness/tui/TuiApp*.class</exclude>
+            <exclude>io/agentharness/store/message/Postgres*.class</exclude>
+            <exclude>io/agentharness/store/jdbc/Jdbc.class</exclude>
+            <exclude>io/agentharness/store/schema/DatabaseBootstrap.class</exclude>
+            <exclude>io/agentharness/engine/store/Postgres*.class</exclude>
+            <exclude>io/agentharness/redis/RedisRuntime.class</exclude>
+            <exclude>io/agentharness/redis/LeaseGuard.class</exclude>
+            <exclude>io/agentharness/redis/Cursors.class</exclude>
+            <exclude>io/agentharness/comm/**</exclude>
+            <exclude>io/agentharness/task/coldstore/**</exclude>
+            <exclude>io/agentharness/task/dispatch/**</exclude>
+            <exclude>io/agentharness/task/worker/**</exclude>
+            <exclude>io/agentharness/task/outbox/OutboxStream.class</exclude>
+            <exclude>io/agentharness/task/outbox/OutboxWriter.class</exclude>
+            <exclude>io/agentharness/engine/AgentScope*.class</exclude>
+            <exclude>io/agentharness/engine/ModelFactory.class</exclude>
+          </excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals><goal>prepare-agent</goal></goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals><goal>report</goal></goals>
+          </execution>
+          <execution>
+            <id>check</id>
+            <phase>verify</phase>
+            <goals><goal>check</goal></goals>
+            <configuration>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>${jacoco.line.coverage}</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

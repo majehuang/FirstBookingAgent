@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "技术方案介绍": {
+      "versions": [
+        {
+          "path": "技术方案介绍.html",
+          "createdAt": "2026-08-24T05:52:42.837Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-08-24T05:52:42.843Z",
+  "updatedAt": "2026-08-24T05:53:10.525Z"
+}

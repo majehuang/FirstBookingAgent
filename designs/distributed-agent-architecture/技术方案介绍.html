@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>分布式 Agent 服务｜技术方案介绍</title>
+  <style>
+    doc-page:not(:defined) { visibility: hidden; }
+
+    :root {
+      --ink: oklch(22% 0.026 247);
+      --ink-soft: oklch(43% 0.028 247);
+      --muted: oklch(57% 0.018 247);
+      --line: oklch(89% 0.018 247);
+      --surface: oklch(98% 0.008 247);
+      --surface-2: oklch(95.5% 0.018 247);
+      --navy: oklch(24% 0.055 247);
+      --navy-2: oklch(31% 0.07 247);
+      --cyan: oklch(70% 0.13 210);
+      --cyan-dark: oklch(46% 0.11 216);
+      --amber: oklch(78% 0.14 78);
+      --amber-dark: oklch(54% 0.12 65);
+      --green: oklch(67% 0.13 158);
+      --red: oklch(62% 0.18 28);
+      --white: oklch(100% 0 0);
+      --sans: "Inter", "SF Pro Display", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.72; }
+    doc-page { --doc-page-w: 210mm; }
+
+    h1, h2, h3, h4, p, figure, table, ul, ol { margin-top: 0; }
+    h1, h2, h3, h4 { color: var(--ink); line-height: 1.22; letter-spacing: -0.025em; }
+    h1 { margin-bottom: 14px; font-size: 38px; font-weight: 780; }
+    h2 { margin: 52px 0 18px; font-size: 25px; font-weight: 760; }
+    h3 { margin: 28px 0 12px; font-size: 17px; font-weight: 720; }
+    p { margin-bottom: 12px; color: var(--ink-soft); }
+    strong { color: var(--ink); font-weight: 720; }
+    code { padding: 0.08em 0.34em; border-radius: 4px; background: var(--surface-2); color: var(--cyan-dark); font-family: var(--mono); font-size: 0.9em; }
+
+    .running-header, .running-footer { color: var(--muted); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .running-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    .running-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--line); }
+    .brand-lockup { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-weight: 760; }
+    .brand-mark { width: 13px; height: 13px; border: 3px solid var(--cyan-dark); border-top-color: var(--amber); border-radius: 4px; transform: rotate(45deg); }
+
+    .hero { padding: 26px 0 8px; border-bottom: 1px solid var(--line); }
+    .eyebrow { margin-bottom: 14px; color: var(--cyan-dark); font-size: 11px; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; }
+    .hero-copy { max-width: 630px; margin-bottom: 22px; font-size: 16px; line-height: 1.65; color: var(--ink-soft); }
+    .hero-copy strong { color: var(--navy); }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-soft); font-size: 10px; font-weight: 650; }
+    .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan-dark); }
+    .hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--white); }
+    .stat { min-height: 76px; padding: 13px 14px; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat-value { margin-bottom: 2px; color: var(--navy); font-family: var(--mono); font-size: 19px; font-weight: 800; letter-spacing: -0.04em; }
+    .stat-label { color: var(--muted); font-size: 10px; line-height: 1.4; }
+
+    .section-kicker { display: block; margin-bottom: 6px; color: var(--cyan-dark); font-family: var(--mono); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; }
+    .lead { max-width: 650px; color: var(--ink-soft); font-size: 15px; }
+    .principles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 18px 0 4px; }
+    .principle { min-height: 114px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); break-inside: avoid; }
+    .principle-num { display: inline-grid; width: 26px; height: 26px; margin-bottom: 10px; place-items: center; border-radius: 6px; background: var(--navy); color: var(--white); font-family: var(--mono); font-size: 10px; font-weight: 800; }
+    .principle h3 { margin: 0 0 5px; font-size: 14px; }
+    .principle p { margin: 0; font-size: 11px; line-height: 1.55; }
+
+    .callout { margin: 18px 0; padding: 14px 16px; border-left: 4px solid var(--cyan-dark); background: oklch(96.5% 0.025 217); break-inside: avoid; }
+    .callout strong { display: block; margin-bottom: 2px; color: var(--navy); }
+    .callout p { margin: 0; font-size: 12px; }
+    .callout.warning { border-left-color: var(--amber-dark); background: oklch(97% 0.035 78); }
+
+    .figure { margin: 20px 0 28px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); break-inside: avoid; }
+    .figure-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 12px; }
+    .figure-title { margin: 0; font-size: 13px; font-weight: 760; letter-spacing: -0.01em; }
+    .figure-note { max-width: 280px; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.45; text-align: right; }
+    .diagram-frame { overflow: hidden; border-radius: 8px; background: var(--navy); }
+    .diagram-frame.light { background: var(--surface); }
+    svg { display: block; width: 100%; height: auto; }
+    figcaption { margin-top: 9px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+
+    .store-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 18px 0; }
+    .store-card { padding: 13px; border-top: 3px solid var(--cyan-dark); background: var(--surface); break-inside: avoid; }
+    .store-card:nth-child(2) { border-top-color: var(--amber-dark); }
+    .store-card:nth-child(3) { border-top-color: var(--green); }
+    .store-card:nth-child(4) { border-top-color: var(--navy-2); }
+    .store-name { margin-bottom: 7px; font-size: 12px; font-weight: 780; }
+    .store-role { margin-bottom: 7px; color: var(--ink-soft); font-size: 10px; line-height: 1.5; }
+    .store-ttl { color: var(--muted); font-family: var(--mono); font-size: 8px; }
+
+    table { width: 100%; margin: 16px 0 24px; border-collapse: collapse; font-size: 10px; line-height: 1.48; }
+    thead { color: var(--ink); background: var(--surface-2); }
+    th, td { padding: 8px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { font-size: 9px; font-weight: 800; letter-spacing: 0.04em; }
+    td { color: var(--ink-soft); }
+    td:first-child { color: var(--ink); font-weight: 700; }
+
+    .invariant-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 16px 0 26px; }
+    .inv { display: grid; grid-template-columns: 44px 1fr; gap: 10px; min-height: 72px; padding: 11px 12px; border: 1px solid var(--line); break-inside: avoid; }
+    .inv-id { color: var(--cyan-dark); font-family: var(--mono); font-size: 10px; font-weight: 800; }
+    .inv-copy { color: var(--ink-soft); font-size: 10px; line-height: 1.5; }
+
+    .roadmap { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 18px 0 22px; }
+    .phase { position: relative; min-height: 112px; padding: 11px 9px; border-top: 3px solid var(--line); background: var(--surface); break-inside: avoid; }
+    .phase.active { border-top-color: var(--amber-dark); background: oklch(97% 0.03 78); }
+    .phase-id { margin-bottom: 8px; color: var(--cyan-dark); font-family: var(--mono); font-size: 10px; font-weight: 800; }
+    .phase.active .phase-id { color: var(--amber-dark); }
+    .phase-name { margin-bottom: 5px; color: var(--ink); font-size: 10px; font-weight: 760; line-height: 1.35; }
+    .phase-time { color: var(--muted); font-family: var(--mono); font-size: 8px; }
+
+    .decision-grid { columns: 2; column-gap: 18px; margin: 16px 0; }
+    .decision { display: inline-block; width: 100%; margin: 0 0 9px; padding: 11px 12px; border-bottom: 1px solid var(--line); break-inside: avoid; }
+    .decision-key { margin-bottom: 3px; color: var(--muted); font-size: 9px; }
+    .decision-value { color: var(--ink); font-size: 11px; font-weight: 740; }
+    .decision-why { margin-top: 3px; color: var(--ink-soft); font-size: 9px; line-height: 1.5; }
+
+    .closing { margin-top: 42px; padding: 22px; border-radius: 12px; background: var(--navy); color: var(--white); break-inside: avoid; }
+    .closing h2 { margin: 0 0 8px; color: var(--white); font-size: 22px; }
+    .closing p { max-width: 600px; margin: 0; color: oklch(86% 0.02 247); font-size: 13px; }
+    .closing-code { display: inline-block; margin-top: 14px; padding: 7px 10px; border: 1px solid oklch(55% 0.06 247); border-radius: 6px; color: var(--cyan); font-family: var(--mono); font-size: 10px; }
+
+    @media (max-width: 860px) {
+      .hero-stats, .store-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .roadmap { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    @media print {
+      .hero { padding-top: 0; }
+      .figure { padding: 10px; }
+      .diagram-frame { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <doc-page size="a4" margin="16mm">
+    <div slot="header" class="running-header">
+      <span class="brand-lockup"><span class="brand-mark"></span> Distributed Agent Service</span>
+      <span>技术方案介绍 · v1.0</span>
+    </div>
+    <div slot="footer" class="running-footer">
+      <span>基于《开发规划.md》整理</span>
+      <span>Java 21 · AgentScope Java v2 · Redis 7.0</span>
+    </div>
+
+    <h1>分布式 Agent 服务<br>技术方案介绍</h1>
+    <section class="hero" data-screen-label="01 技术方案总览">
+      <div class="eyebrow">Architecture Brief / 2026</div>
+      <p class="hero-copy">让 <strong>HarnessAgent 单例只负责推理</strong>，由应用层负责分布式调度、消息投递与故障恢复。两者的边界收敛为一行 <code>streamEvents()</code>，从结构上隔离多端、漂移与唤醒复杂度。</p>
+      <div class="meta-row">
+        <span class="chip"><span class="chip-dot"></span>企业内部部署</span>
+        <span class="chip"><span class="chip-dot"></span>无多租户</span>
+        <span class="chip"><span class="chip-dot"></span>Reactive 全链路</span>
+        <span class="chip"><span class="chip-dot"></span>消息表是真相源</span>
+      </div>
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-value">3</div><div class="stat-label">通信层 / 任务层 / Agent 层</div></div>
+        <div class="stat"><div class="stat-value">4</div><div class="stat-label">职责互斥的存储层</div></div>
+        <div class="stat"><div class="stat-value">256</div><div class="stat-label">固定 session 分片数</div></div>
+        <div class="stat"><div class="stat-value">14–15</div><div class="stat-label">预计人周 · 2–3 人团队</div></div>
+      </div>
+    </section>
+
+    <section data-screen-label="02 设计原则">
+      <h2><span class="section-kicker">01 / DESIGN PRINCIPLES</span>四条原则锁住系统边界</h2>
+      <p class="lead">这套方案的重点不是“把 Agent 部署到多个 pod”，而是把执行权、可见消息、实时推送和模型状态拆成独立、可验证的责任域。</p>
+      <div class="principles">
+        <article class="principle"><span class="principle-num">01</span><h3>Agent 是无状态推理引擎</h3><p>单例服务所有 <code>(userId, sessionId)</code>；模型上下文由 Store 按需加载，不引入 Agent Factory 或 Session Manager。</p></article>
+        <article class="principle"><span class="principle-num">02</span><h3>Redis 是模块契约</h3><p>通信层与任务层不直接调用、无服务发现、无共享内存；键命名规范就是唯一接口。</p></article>
+        <article class="principle"><span class="principle-num">03</span><h3>持久化先于可见</h3><p>固定顺序为消息表 → outbox → 异步事件日志，避免“用户已看到，刷新后却消失”。</p></article>
+        <article class="principle"><span class="principle-num">04</span><h3>租约决定执行权</h3><p>任意 pod 可读到同一 session，但只有唯一 lease 持有者可以启动 Worker 并写出结果。</p></article>
+      </div>
+      <div class="callout"><strong>核心收益</strong><p>通信层按 SSE 连接数扩容，任务层按并发 turn 数扩容。两个维度不再互相绑架，生产环境可在不改代码的前提下拆分部署。</p></div>
+    </section>
+
+    <section data-screen-label="03 整体架构图">
+      <h2><span class="section-kicker">02 / SYSTEM ARCHITECTURE</span>整体架构：Redis 契约居中，Agent 边界收敛</h2>
+      <figure class="figure">
+        <div class="figure-head"><h3 class="figure-title">整体架构图</h3><p class="figure-note">实线表示在线主链路，虚线表示旁路存储或业务能力调用。</p></div>
+        <div class="diagram-frame">
+          <svg viewBox="0 0 920 700" role="img" aria-labelledby="arch-title arch-desc">
+            <title id="arch-title">分布式 Agent 服务整体架构</title>
+            <desc id="arch-desc">客户端经过通信层把指令写入 Redis，任务层消费并调用 Agent，用户可见消息先写数据库再进入 outbox，事件异步写冷存储。</desc>
+            <defs>
+              <marker id="archArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#55c5d9"></path></marker>
+              <marker id="archArrowAmber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#efbc5b"></path></marker>
+            </defs>
+            <rect x="0" y="0" width="920" height="700" fill="#17283d"></rect>
+            <text x="42" y="42" fill="#8fa2b8" font-family="ui-monospace, monospace" font-size="12" letter-spacing="2">REQUEST → SCHEDULE → INFER → PERSIST → STREAM</text>
+
+            <rect x="40" y="70" width="840" height="76" rx="10" fill="#223851" stroke="#486176"></rect>
+            <text x="64" y="100" fill="#ffffff" font-family="system-ui, sans-serif" font-size="18" font-weight="700">客户端</text>
+            <text x="64" y="124" fill="#aebdcb" font-family="system-ui, sans-serif" font-size="12">Web / App · POST messages &amp; control · msg SSE · ctrl SSE · 历史拉取</text>
+            <rect x="676" y="89" width="170" height="36" rx="7" fill="#17283d" stroke="#55c5d9"></rect>
+            <text x="761" y="112" text-anchor="middle" fill="#75d6e5" font-family="ui-monospace, monospace" font-size="11">客户端去重 + 空窗自愈</text>
+
+            <path d="M210 146 L210 184" stroke="#55c5d9" stroke-width="2" marker-end="url(#archArrow)"></path>
+            <path d="M710 184 L710 146" stroke="#55c5d9" stroke-width="2" marker-end="url(#archArrow)"></path>
+
+            <rect x="40" y="186" width="840" height="126" rx="10" fill="#1d3148" stroke="#3a5871"></rect>
+            <text x="64" y="216" fill="#75d6e5" font-family="ui-monospace, monospace" font-size="12" font-weight="700">COMMUNICATION LAYER</text>
+            <rect x="64" y="232" width="354" height="58" rx="7" fill="#263f59"></rect>
+            <text x="82" y="255" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="700">收消息模块</text>
+            <text x="82" y="276" fill="#aebdcb" font-family="system-ui, sans-serif" font-size="11">鉴权 · 校验 · 幂等 · inbox → ready · 准入限流</text>
+            <rect x="502" y="232" width="354" height="58" rx="7" fill="#263f59"></rect>
+            <text x="520" y="255" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="700">发消息模块</text>
+            <text x="520" y="276" fill="#aebdcb" font-family="system-ui, sans-serif" font-size="11">msg / ctrl SSE · 窗口重放 · 快照水位 · 历史拉取</text>
+
+            <path d="M240 312 L240 348" stroke="#55c5d9" stroke-width="2" marker-end="url(#archArrow)"></path>
+            <path d="M680 348 L680 312" stroke="#55c5d9" stroke-width="2" marker-end="url(#archArrow)"></path>
+            <rect x="40" y="350" width="840" height="90" rx="10" fill="#0e4552" stroke="#55c5d9"></rect>
+            <text x="64" y="382" fill="#ffffff" font-family="system-ui, sans-serif" font-size="17" font-weight="750">Redis 7.0 · 模块间唯一在线契约</text>
+            <text x="64" y="412" fill="#bceaf0" font-family="ui-monospace, monospace" font-size="11">ready  |  {s07}:inbox  |  outbox  |  ctrl-stream  |  state  |  cursor  |  lease</text>
+            <rect x="690" y="371" width="166" height="42" rx="7" fill="#12333d" stroke="#75d6e5"></rect>
+            <text x="773" y="389" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Lua 原子边界</text>
+            <text x="773" y="404" text-anchor="middle" fill="#a8dce4" font-family="system-ui, sans-serif" font-size="9">摘牌 / ctrl 状态</text>
+
+            <path d="M240 440 L240 478" stroke="#55c5d9" stroke-width="2" marker-end="url(#archArrow)"></path>
+            <path d="M680 478 L680 440" stroke="#efbc5b" stroke-width="2" marker-end="url(#archArrowAmber)"></path>
+            <rect x="40" y="480" width="840" height="126" rx="10" fill="#1d3148" stroke="#3a5871"></rect>
+            <text x="64" y="510" fill="#efbc5b" font-family="ui-monospace, monospace" font-size="12" font-weight="700">TASK LAYER</text>
+            <rect x="64" y="526" width="300" height="58" rx="7" fill="#263f59"></rect>
+            <text x="82" y="549" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="700">任务控制模块</text>
+            <text x="82" y="570" fill="#aebdcb" font-family="system-ui, sans-serif" font-size="11">消费组 · 回收 · 在飞上限 · 抢 lease</text>
+            <rect x="390" y="526" width="466" height="58" rx="7" fill="#263f59"></rect>
+            <text x="408" y="549" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="700">Worker 模块</text>
+            <text x="408" y="570" fill="#aebdcb" font-family="system-ui, sans-serif" font-size="11">双游标 · 续租 · 事件分流 · 消息落库 · outbox 写入</text>
+
+            <path d="M624 606 L624 642" stroke="#efbc5b" stroke-width="2" marker-end="url(#archArrowAmber)"></path>
+            <rect x="390" y="644" width="466" height="36" rx="8" fill="#352f28" stroke="#efbc5b"></rect>
+            <text x="623" y="667" text-anchor="middle" fill="#ffd783" font-family="ui-monospace, monospace" font-size="12">streamEvents(message, RuntimeContext)</text>
+            <rect x="64" y="644" width="278" height="36" rx="8" fill="#263f59" stroke="#486176"></rect>
+            <text x="203" y="667" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="12" font-weight="700">HarnessAgent 单例 + 工具 / Middleware</text>
+
+            <path d="M40 555 L16 555 L16 254 L40 254" fill="none" stroke="#efbc5b" stroke-width="1.5" stroke-dasharray="5 5"></path>
+            <text x="11" y="407" text-anchor="middle" transform="rotate(-90 11 407)" fill="#efbc5b" font-family="ui-monospace, monospace" font-size="9">INDEPENDENT SCALE</text>
+          </svg>
+        </div>
+        <figcaption>图 1｜通信层与任务层仅通过 Redis 交换数据。Agent 层进程内随任务层部署，边界只保留事件流调用。</figcaption>
+      </figure>
+    </section>
+
+    <section data-screen-label="04 存储分层">
+      <h2><span class="section-kicker">03 / DATA RESPONSIBILITY</span>四层存储，各自只做一件事</h2>
+      <div class="store-grid">
+        <article class="store-card"><div class="store-name">消息表 · DB</div><div class="store-role">用户可见消息与冻结卡片；历史拉取和超窗重放的真相源。</div><div class="store-ttl">RETENTION · LONG-TERM</div></article>
+        <article class="store-card"><div class="store-name">outbox · Stream</div><div class="store-role">同批消息的实时副本；跨 pod 扇出与短期断线重放。</div><div class="store-ttl">RETENTION · 5–10 MIN</div></article>
+        <article class="store-card"><div class="store-name">事件日志 · Cold</div><div class="store-role">全量 AgentEvent，用于排查与分析；异步旁路，不阻塞 turn。</div><div class="store-ttl">RETENTION · COMPLIANCE</div></article>
+        <article class="store-card"><div class="store-name">AgentState · Redis</div><div class="store-role">模型上下文，由框架管理；与客户端可见消息彻底分离。</div><div class="store-ttl">RETENTION · SESSION</div></article>
+      </div>
+      <div class="callout warning"><strong>不可逆的写入顺序</strong><p><code>消息表 → outbox → 事件日志（异步）</code>。若 outbox 先写，客户端可能看到一条刷新后不存在的消息；若日志同步写，冷存储抖动会拖垮在线链路。</p></div>
+    </section>
+
+    <section data-screen-label="05 系统模块部署图">
+      <h2><span class="section-kicker">04 / DEPLOYMENT TOPOLOGY</span>系统模块部署：两个扩容维度，四类外部依赖</h2>
+      <figure class="figure">
+        <div class="figure-head"><h3 class="figure-title">系统模块部署图</h3><p class="figure-note">建议 P1–P4 合并部署；P5 后按连接规模拆为通信服务与任务服务。</p></div>
+        <div class="diagram-frame light">
+          <svg viewBox="0 0 920 670" role="img" aria-labelledby="deploy-title deploy-desc">
+            <title id="deploy-title">系统模块生产部署拓扑</title>
+            <desc id="deploy-desc">入口经过负载均衡到通信服务，任务服务独立消费 Redis，Agent 在任务 pod 内，数据写入消息数据库和冷存储。</desc>
+            <defs>
+              <marker id="deployArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#348c9f"></path></marker>
+              <marker id="deployArrowDark" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#263f59"></path></marker>
+            </defs>
+            <rect x="0" y="0" width="920" height="670" fill="#f4f7f9"></rect>
+            <text x="38" y="39" fill="#52687a" font-family="ui-monospace, monospace" font-size="12" letter-spacing="1.5">PRODUCTION · KUBERNETES / CONTAINER PLATFORM</text>
+
+            <rect x="38" y="62" width="844" height="548" rx="14" fill="#ffffff" stroke="#d5e0e6" stroke-width="2"></rect>
+            <text x="60" y="91" fill="#263f59" font-family="system-ui, sans-serif" font-size="13" font-weight="750">集群边界</text>
+
+            <rect x="74" y="118" width="188" height="62" rx="9" fill="#263f59"></rect>
+            <text x="168" y="143" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="720">企业客户端</text>
+            <text x="168" y="163" text-anchor="middle" fill="#b7c8d5" font-family="system-ui, sans-serif" font-size="10">HTTPS / SSE</text>
+            <path d="M262 149 L334 149" stroke="#348c9f" stroke-width="2" marker-end="url(#deployArrow)"></path>
+            <rect x="336" y="118" width="210" height="62" rx="9" fill="#0e5563"></rect>
+            <text x="441" y="143" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="720">Ingress / Load Balancer</text>
+            <text x="441" y="163" text-anchor="middle" fill="#bceaf0" font-family="system-ui, sans-serif" font-size="10">任意节点接入</text>
+
+            <path d="M441 180 L441 224" stroke="#348c9f" stroke-width="2" marker-end="url(#deployArrow)"></path>
+            <rect x="74" y="226" width="472" height="148" rx="11" fill="#e7f5f7" stroke="#70beca"></rect>
+            <text x="94" y="251" fill="#0e5563" font-family="ui-monospace, monospace" font-size="11" font-weight="800">COMMUNICATION SERVICE · SCALE BY SSE CONNECTIONS</text>
+            <rect x="94" y="270" width="132" height="76" rx="7" fill="#ffffff" stroke="#b9dce2"></rect>
+            <rect x="244" y="270" width="132" height="76" rx="7" fill="#ffffff" stroke="#b9dce2"></rect>
+            <rect x="394" y="270" width="132" height="76" rx="7" fill="#ffffff" stroke="#b9dce2"></rect>
+            <text x="160" y="295" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="12" font-weight="700">Comm Pod 1</text>
+            <text x="160" y="317" text-anchor="middle" fill="#647889" font-family="system-ui, sans-serif" font-size="9">收消息 + 发消息</text>
+            <text x="160" y="333" text-anchor="middle" fill="#348c9f" font-family="ui-monospace, monospace" font-size="8">WEBFLUX</text>
+            <text x="310" y="295" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="12" font-weight="700">Comm Pod 2</text>
+            <text x="310" y="317" text-anchor="middle" fill="#647889" font-family="system-ui, sans-serif" font-size="9">收消息 + 发消息</text>
+            <text x="310" y="333" text-anchor="middle" fill="#348c9f" font-family="ui-monospace, monospace" font-size="8">WEBFLUX</text>
+            <text x="460" y="295" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="12" font-weight="700">Comm Pod N</text>
+            <text x="460" y="317" text-anchor="middle" fill="#647889" font-family="system-ui, sans-serif" font-size="9">收消息 + 发消息</text>
+            <text x="460" y="333" text-anchor="middle" fill="#348c9f" font-family="ui-monospace, monospace" font-size="8">HORIZONTAL SCALE</text>
+
+            <rect x="584" y="118" width="264" height="256" rx="11" fill="#fff8e9" stroke="#e5bd68"></rect>
+            <text x="606" y="143" fill="#825c1c" font-family="ui-monospace, monospace" font-size="11" font-weight="800">TASK SERVICE · SCALE BY ACTIVE TURNS</text>
+            <rect x="606" y="162" width="220" height="86" rx="7" fill="#ffffff" stroke="#ecd598"></rect>
+            <text x="622" y="185" fill="#263f59" font-family="system-ui, sans-serif" font-size="12" font-weight="700">Task Pod 1</text>
+            <text x="622" y="207" fill="#647889" font-family="system-ui, sans-serif" font-size="9">Controller × 1 · Worker × active slots</text>
+            <text x="622" y="226" fill="#9c6e1e" font-family="ui-monospace, monospace" font-size="8">HarnessAgent SINGLETON</text>
+            <rect x="606" y="264" width="220" height="86" rx="7" fill="#ffffff" stroke="#ecd598"></rect>
+            <text x="622" y="287" fill="#263f59" font-family="system-ui, sans-serif" font-size="12" font-weight="700">Task Pod M</text>
+            <text x="622" y="309" fill="#647889" font-family="system-ui, sans-serif" font-size="9">Controller × 1 · Worker × active slots</text>
+            <text x="622" y="328" fill="#9c6e1e" font-family="ui-monospace, monospace" font-size="8">INDEPENDENT SCALE</text>
+
+            <path d="M310 374 L310 432" stroke="#348c9f" stroke-width="2" marker-end="url(#deployArrow)"></path>
+            <path d="M716 374 L716 432" stroke="#263f59" stroke-width="2" marker-end="url(#deployArrowDark)"></path>
+            <rect x="220" y="434" width="528" height="72" rx="10" fill="#0e5563"></rect>
+            <text x="244" y="461" fill="#ffffff" font-family="system-ui, sans-serif" font-size="15" font-weight="750">阿里云 Redis 7.0 · 标准版（主从）</text>
+            <text x="244" y="485" fill="#bceaf0" font-family="ui-monospace, monospace" font-size="10">ready · session streams · state · cursor · lease · AgentState</text>
+            <rect x="614" y="452" width="110" height="34" rx="6" fill="#12333d" stroke="#70beca"></rect>
+            <text x="669" y="473" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="9">Lettuce Reactive</text>
+
+            <path d="M350 506 L350 546" stroke="#263f59" stroke-width="1.5" marker-end="url(#deployArrowDark)"></path>
+            <path d="M484 506 L484 546" stroke="#263f59" stroke-width="1.5" marker-end="url(#deployArrowDark)"></path>
+            <path d="M620 506 L620 546" stroke="#263f59" stroke-width="1.5" marker-end="url(#deployArrowDark)"></path>
+            <rect x="250" y="548" width="196" height="43" rx="7" fill="#ffffff" stroke="#cdd9e0"></rect>
+            <text x="348" y="574" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="11" font-weight="700">消息数据库 · 真相源</text>
+            <rect x="462" y="548" width="154" height="43" rx="7" fill="#ffffff" stroke="#cdd9e0"></rect>
+            <text x="539" y="574" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="11" font-weight="700">事件冷存储</text>
+            <rect x="632" y="548" width="196" height="43" rx="7" fill="#ffffff" stroke="#cdd9e0" stroke-dasharray="5 4"></rect>
+            <text x="730" y="567" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="10" font-weight="700">RemoteFilesystemSpec</text>
+            <text x="730" y="582" text-anchor="middle" fill="#647889" font-family="system-ui, sans-serif" font-size="8">可选 · 共享长期记忆</text>
+            <text x="38" y="643" fill="#647889" font-family="system-ui, sans-serif" font-size="10">扩容策略：SSE 连接数 ≠ 活跃 turn 数。生产拆分后，闲置长连接不会带着推理资源一起扩。</text>
+          </svg>
+        </div>
+        <figcaption>图 2｜标准版 Redis 避免 Cluster Lua 槽约束，仍保留 <code>{sNN}</code> hash tag，为未来迁移集群版保留路径。</figcaption>
+      </figure>
+    </section>
+
+    <section data-screen-label="06 消息处理流程图">
+      <h2><span class="section-kicker">05 / MESSAGE PIPELINE</span>消息处理流程：从 202 到可恢复的 SSE</h2>
+      <figure class="figure">
+        <div class="figure-head"><h3 class="figure-title">消息处理流程图</h3><p class="figure-note">红色检查点是故障下仍必须成立的不变量。</p></div>
+        <div class="diagram-frame light">
+          <svg viewBox="0 0 920 850" role="img" aria-labelledby="flow-title flow-desc">
+            <title id="flow-title">端到端消息处理流程</title>
+            <desc id="flow-desc">客户端发送消息，通信层按顺序写 inbox 和 ready，任务层消费后抢 lease，Worker 调用 Agent 并将可见消息先写数据库后写 outbox，客户端通过序号去重与恢复。</desc>
+            <defs>
+              <marker id="flowArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#348c9f"></path></marker>
+              <marker id="flowArrowAmber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#b57b1d"></path></marker>
+            </defs>
+            <rect x="0" y="0" width="920" height="850" fill="#f4f7f9"></rect>
+            <rect x="28" y="26" width="864" height="60" rx="9" fill="#263f59"></rect>
+            <text x="50" y="52" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="750">1 · 指令投递</text>
+            <text x="50" y="72" fill="#c5d2dc" font-family="system-ui, sans-serif" font-size="10">POST /sessions/{sid}/messages · instructionId 幂等 · 两条都成功才返回 202</text>
+
+            <rect x="52" y="112" width="170" height="54" rx="8" fill="#ffffff" stroke="#cdd9e0"></rect>
+            <text x="137" y="135" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="11" font-weight="700">鉴权 / 参数校验</text>
+            <text x="137" y="153" text-anchor="middle" fill="#647889" font-family="system-ui, sans-serif" font-size="9">准入与幂等</text>
+            <path d="M222 139 L275 139" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <rect x="278" y="112" width="170" height="54" rx="8" fill="#e7f5f7" stroke="#70beca"></rect>
+            <text x="363" y="135" text-anchor="middle" fill="#0e5563" font-family="system-ui, sans-serif" font-size="11" font-weight="750">XADD inbox</text>
+            <text x="363" y="153" text-anchor="middle" fill="#348c9f" font-family="ui-monospace, monospace" font-size="8">必须先写</text>
+            <path d="M448 139 L501 139" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <rect x="504" y="112" width="170" height="54" rx="8" fill="#fff5df" stroke="#e5bd68"></rect>
+            <text x="589" y="135" text-anchor="middle" fill="#825c1c" font-family="system-ui, sans-serif" font-size="11" font-weight="750">XADD ready</text>
+            <text x="589" y="153" text-anchor="middle" fill="#9c6e1e" font-family="ui-monospace, monospace" font-size="8">随后唤醒</text>
+            <path d="M674 139 L727 139" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <rect x="730" y="112" width="138" height="54" rx="8" fill="#ffffff" stroke="#cdd9e0"></rect>
+            <text x="799" y="135" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="11" font-weight="750">202 Accepted</text>
+            <text x="799" y="153" text-anchor="middle" fill="#647889" font-family="ui-monospace, monospace" font-size="8">replyId + msgSeq</text>
+            <rect x="278" y="181" width="396" height="36" rx="6" fill="#fdeceb" stroke="#df7a73"></rect>
+            <text x="476" y="204" text-anchor="middle" fill="#9f302d" font-family="system-ui, sans-serif" font-size="9" font-weight="750">INV-1 · inbox → ready；超时或 5xx 用同一 instructionId 重试</text>
+
+            <path d="M460 217 L460 258" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <rect x="28" y="260" width="864" height="60" rx="9" fill="#0e5563"></rect>
+            <text x="50" y="286" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="750">2 · 调度与执行权</text>
+            <text x="50" y="306" fill="#bceaf0" font-family="system-ui, sans-serif" font-size="10">XREADGROUP → 认领数 = 空闲槽位数 → SET lease NX PX 30000 → 启动 Worker</text>
+
+            <rect x="52" y="346" width="184" height="62" rx="8" fill="#ffffff" stroke="#cdd9e0"></rect>
+            <text x="144" y="371" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="11" font-weight="700">消费 ready 令牌</text>
+            <text x="144" y="391" text-anchor="middle" fill="#647889" font-family="system-ui, sans-serif" font-size="9">consumer = podName</text>
+            <path d="M236 377 L290 377" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <polygon points="376,337 460,377 376,417 292,377" fill="#fff5df" stroke="#e5bd68"></polygon>
+            <text x="376" y="373" text-anchor="middle" fill="#825c1c" font-family="system-ui, sans-serif" font-size="10" font-weight="750">抢 lease</text>
+            <text x="376" y="388" text-anchor="middle" fill="#9c6e1e" font-family="ui-monospace, monospace" font-size="8">唯一值</text>
+            <path d="M460 377 L516 377" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <rect x="518" y="346" width="170" height="62" rx="8" fill="#e7f5f7" stroke="#70beca"></rect>
+            <text x="603" y="371" text-anchor="middle" fill="#0e5563" font-family="system-ui, sans-serif" font-size="11" font-weight="750">Worker drain inbox</text>
+            <text x="603" y="391" text-anchor="middle" fill="#348c9f" font-family="system-ui, sans-serif" font-size="9">双游标 / 幂等</text>
+            <path d="M688 377 L742 377" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <rect x="744" y="346" width="124" height="62" rx="8" fill="#263f59"></rect>
+            <text x="806" y="371" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="11" font-weight="750">Agent</text>
+            <text x="806" y="391" text-anchor="middle" fill="#c5d2dc" font-family="ui-monospace, monospace" font-size="8">streamEvents()</text>
+            <rect x="154" y="431" width="612" height="38" rx="6" fill="#fdeceb" stroke="#df7a73"></rect>
+            <text x="460" y="455" text-anchor="middle" fill="#9f302d" font-family="system-ui, sans-serif" font-size="9" font-weight="750">INV-3 / 4 · lease 每次唯一；每 10s 续租；失败立即中止并停止写 outbox</text>
+
+            <path d="M460 469 L460 510" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <rect x="28" y="512" width="864" height="60" rx="9" fill="#263f59"></rect>
+            <text x="50" y="538" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="750">3 · 事件分流与消息可见</text>
+            <text x="50" y="558" fill="#c5d2dc" font-family="system-ui, sans-serif" font-size="10">AgentEvent 按类型进入控制状态、用户消息与合规日志三条支路</text>
+
+            <rect x="52" y="600" width="210" height="76" rx="8" fill="#ffffff" stroke="#cdd9e0"></rect>
+            <text x="157" y="625" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="11" font-weight="750">状态事件</text>
+            <text x="157" y="646" text-anchor="middle" fill="#647889" font-family="system-ui, sans-serif" font-size="9">ctrl-stream + state</text>
+            <text x="157" y="662" text-anchor="middle" fill="#348c9f" font-family="ui-monospace, monospace" font-size="8">LUA · SNAPSHOT + WATERMARK</text>
+            <rect x="286" y="600" width="348" height="76" rx="8" fill="#e7f5f7" stroke="#70beca"></rect>
+            <text x="460" y="625" text-anchor="middle" fill="#0e5563" font-family="system-ui, sans-serif" font-size="11" font-weight="750">消息 / 工具事件</text>
+            <text x="460" y="646" text-anchor="middle" fill="#348c9f" font-family="system-ui, sans-serif" font-size="9">buffer 80ms → 消息表 → XADD outbox</text>
+            <text x="460" y="662" text-anchor="middle" fill="#348c9f" font-family="ui-monospace, monospace" font-size="8">PER-SESSION msgSeq · concatMap</text>
+            <rect x="658" y="600" width="210" height="76" rx="8" fill="#ffffff" stroke="#cdd9e0"></rect>
+            <text x="763" y="625" text-anchor="middle" fill="#263f59" font-family="system-ui, sans-serif" font-size="11" font-weight="750">全量事件</text>
+            <text x="763" y="646" text-anchor="middle" fill="#647889" font-family="system-ui, sans-serif" font-size="9">异步写入冷存储</text>
+            <text x="763" y="662" text-anchor="middle" fill="#647889" font-family="ui-monospace, monospace" font-size="8">FAILURE DOES NOT BLOCK TURN</text>
+            <rect x="286" y="697" width="348" height="38" rx="6" fill="#fdeceb" stroke="#df7a73"></rect>
+            <text x="460" y="721" text-anchor="middle" fill="#9f302d" font-family="system-ui, sans-serif" font-size="9" font-weight="750">INV-5 / 8 · 先落库后 XADD；事件管道只用 concatMap 保序</text>
+
+            <path d="M460 735 L460 772" stroke="#348c9f" stroke-width="2" marker-end="url(#flowArrow)"></path>
+            <rect x="52" y="774" width="816" height="52" rx="8" fill="#263f59"></rect>
+            <text x="76" y="798" fill="#ffffff" font-family="system-ui, sans-serif" font-size="11" font-weight="750">客户端消费 SSE</text>
+            <text x="76" y="816" fill="#c5d2dc" font-family="system-ui, sans-serif" font-size="9">seq ≤ max：丢弃 · seq = max+1：追加 · seq &gt; max+1：清缓冲 → 拉历史 → 重建 → 接后续帧</text>
+          </svg>
+        </div>
+        <figcaption>图 3｜投递可靠性由服务端写入顺序与客户端同 instructionId 重试共同完成；断线一致性由 per-session msgSeq 与消息表兜底。</figcaption>
+      </figure>
+    </section>
+
+    <section data-screen-label="07 正确性机制">
+      <h2><span class="section-kicker">06 / CORRECTNESS MODEL</span>正确性机制：租约、回收与水位</h2>
+      <table>
+        <thead><tr><th>机制</th><th>设计</th><th>防止的问题</th><th>关键参数 / 顺序</th></tr></thead>
+        <tbody>
+          <tr><td>执行租约</td><td><code>SET NX PX</code>，值每次唯一；只允许持有者续租和释放。</td><td>多 pod 双跑、旧 Worker 误释放新牌。</td><td>TTL 30s；每 10s 续租。</td></tr>
+          <tr><td>令牌回收</td><td>启动一次 + 每 30s 执行 <code>XAUTOCLAIM</code>，循环至 <code>0-0</code>。</td><td>pod 崩溃后 PEL 永久 pending。</td><td><code>MIN-IDLE-TIME 60s</code>，不能为 0。</td></tr>
+          <tr><td>消费心跳</td><td>持牌期用 <code>XCLAIM … JUSTID</code> 重置 ready 令牌 idle。</td><td>长 turn 被误判死亡并频繁回收。</td><td>与 lease 续租同频。</td></tr>
+          <tr><td>原子摘牌</td><td>Lua 同时校验 lease、确认 inbox 已空、删除 lease。</td><td>释放瞬间新消息进入，导致无人唤醒。</td><td>抽干 → 摘牌 → XACK。</td></tr>
+          <tr><td>控制水位</td><td>Lua 内 XADD ctrl-stream，再把生成的 <code>ctrlId</code> 写回 state。</td><td>旧控制帧覆盖新快照，产生状态翻转。</td><td>快照 → 从 ctrlId 开区间重放。</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warning"><strong>P3 是最高风险阶段</strong><p>这里的错误通常不会在普通功能测试中出现。验收必须包含随机 kill pod、Redis 抖动、长 GC 与连续对话，并验证无丢失、无重复回复、无 session 永久卡死。</p></div>
+    </section>
+
+    <section data-screen-label="08 不变量清单">
+      <h2><span class="section-kicker">07 / ENGINEERING GUARDRAILS</span>需要写进 Code Review 的不变量</h2>
+      <div class="invariant-list">
+        <div class="inv"><div class="inv-id">INV-1</div><div class="inv-copy">投递必须 <strong>inbox 先、ready 后</strong>；两条成功才返回 202。</div></div>
+        <div class="inv"><div class="inv-id">INV-2</div><div class="inv-copy">摘牌与确认 inbox 已空必须在同一 Lua 脚本中完成。</div></div>
+        <div class="inv"><div class="inv-id">INV-3</div><div class="inv-copy">lease 值每次抢占唯一；禁止直接使用 pod 名作为值。</div></div>
+        <div class="inv"><div class="inv-id">INV-4</div><div class="inv-copy">执行顺序固定：<strong>抽干 → 摘牌 → 交差</strong>；续租在 doFinally 取消。</div></div>
+        <div class="inv"><div class="inv-id">INV-5</div><div class="inv-copy">消息先落库后 XADD；事件日志失败不得影响 turn。</div></div>
+        <div class="inv"><div class="inv-id">INV-6</div><div class="inv-copy">outbox 裁剪受 turnStartId 保护，进行中的 turn 不可被截断。</div></div>
+        <div class="inv"><div class="inv-id">INV-7</div><div class="inv-copy">middleware / adapter 的阻塞调用必须 offload 到 boundedElastic。</div></div>
+        <div class="inv"><div class="inv-id">INV-8</div><div class="inv-copy">AgentEvent 管道一律 concatMap；仅 ready 消费使用 flatMap。</div></div>
+        <div class="inv"><div class="inv-id">INV-9</div><div class="inv-copy">所有 session key 带 hash tag，分片数 256 永不修改。</div></div>
+        <div class="inv"><div class="inv-id">INV-10</div><div class="inv-copy">msgSeq 按 session 单调无洞，不能使用 DB 全局自增。</div></div>
+        <div class="inv"><div class="inv-id">INV-11</div><div class="inv-copy">ctrlId 水位与 XADD 必须在同一 Lua 脚本中原子产生。</div></div>
+        <div class="inv"><div class="inv-id">INV-12</div><div class="inv-copy">ctrl-stream 仅允许非阻塞轮询，禁止 XREAD BLOCK。</div></div>
+      </div>
+    </section>
+
+    <section data-screen-label="09 路线图">
+      <h2><span class="section-kicker">08 / DELIVERY ROADMAP</span>交付路线：先闭环，再把故障变成可测试行为</h2>
+      <div class="roadmap">
+        <article class="phase"><div class="phase-id">P0</div><div class="phase-name">地基与协议锁定</div><div class="phase-time">1 人周</div></article>
+        <article class="phase"><div class="phase-id">P1</div><div class="phase-name">单节点全链路闭环</div><div class="phase-time">2–3 人周</div></article>
+        <article class="phase"><div class="phase-id">P2</div><div class="phase-name">富消息与冻结卡片</div><div class="phase-time">2 人周</div></article>
+        <article class="phase active"><div class="phase-id">P3 ★</div><div class="phase-name">多节点正确性</div><div class="phase-time">3–4 人周</div></article>
+        <article class="phase"><div class="phase-id">P4</div><div class="phase-name">断线重连一致性</div><div class="phase-time">1 人周</div></article>
+        <article class="phase"><div class="phase-id">P5</div><div class="phase-name">控制通道与打断</div><div class="phase-time">2 人周</div></article>
+        <article class="phase"><div class="phase-id">P6</div><div class="phase-name">容量与优雅降级</div><div class="phase-time">2 人周</div></article>
+      </div>
+      <p class="lead"><strong>关键路径：P0 → P1 → P3。</strong> P2、Skill 管理可在主线稳定后并行；P5 后再依据真实 SSE 连接规模决定是否拆分部署。</p>
+    </section>
+
+    <section data-screen-label="10 技术决策">
+      <h2><span class="section-kicker">09 / KEY DECISIONS</span>已经定下的关键技术决策</h2>
+      <div class="decision-grid">
+        <article class="decision"><div class="decision-key">Redis 形态</div><div class="decision-value">阿里云 Redis 7.0 标准版（主从）</div><div class="decision-why">满足 XAUTOCLAIM / MINID；企业规模足够，并规避集群 Lua 槽检查。</div></article>
+        <article class="decision"><div class="decision-key">Redis 客户端</div><div class="decision-value">Lettuce Reactive 全线统一</div><div class="decision-why">避免热路径阻塞，非阻塞命令可在连接上多路复用。</div></article>
+        <article class="decision"><div class="decision-key">ready 队列</div><div class="decision-value">单个全局 Stream + 消费组</div><div class="decision-why">每个 pod 只需一条阻塞连接；session key 仍保留 256 分片。</div></article>
+        <article class="decision"><div class="decision-key">消息真相源</div><div class="decision-value">消息表，而非 outbox 或 AgentState</div><div class="decision-why">支撑长期重放、分页与冻结卡片；实时流只承担短期分发。</div></article>
+        <article class="decision"><div class="decision-key">断线重连</div><div class="decision-value">服务端全量重放 + 客户端去重</div><div class="decision-why">首次加载与超窗恢复复用同一路径，服务端无需解析位置参数。</div></article>
+        <article class="decision"><div class="decision-key">跨节点打断</div><div class="decision-value">复用 inbox，不增加 pub/sub</div><div class="decision-why">统一顺序、持久化与恢复，减少一条与 lease 绑定的订阅生命周期。</div></article>
+        <article class="decision"><div class="decision-key">富消息</div><div class="decision-value">表达型 tool + middleware 成对</div><div class="decision-why">schema 即契约，保持文本流式体验，卡片补全后冻结落库。</div></article>
+        <article class="decision"><div class="decision-key">Workspace 记忆</div><div class="decision-value">建议 RemoteFilesystemSpec + Redis BaseStore</div><div class="decision-why">多 pod 共享 USER 级长期记忆，避免本地文件系统按 pod 分叉。</div></article>
+      </div>
+    </section>
+
+    <section class="closing" data-screen-label="11 结论">
+      <h2>把复杂度放在可验证的分布式协议里</h2>
+      <p>Agent 保持单例、无状态、只推理；调度、持久化、扇出、重连与中断都由应用层明确承担。这样既能独立扩容，也能把每一种故障收敛成可复现、可压测、可审查的不变量。</p>
+      <span class="closing-code">HarnessAgent.streamEvents() // clean boundary</span>
+    </section>
+  </doc-page>
+  <script src="doc-page.js"></script>
+</body>
+</html>

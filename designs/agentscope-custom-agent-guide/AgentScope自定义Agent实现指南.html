@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AgentScope Java 2｜自定义 Agent 实现指南</title>
+  <style>
+    doc-page:not(:defined) { visibility: hidden; }
+
+    :root {
+      --ink: oklch(22% 0.026 247);
+      --ink-soft: oklch(43% 0.028 247);
+      --muted: oklch(57% 0.018 247);
+      --line: oklch(89% 0.018 247);
+      --surface: oklch(98% 0.008 247);
+      --surface-2: oklch(95.5% 0.018 247);
+      --navy: oklch(24% 0.055 247);
+      --navy-2: oklch(31% 0.07 247);
+      --cyan: oklch(70% 0.13 210);
+      --cyan-dark: oklch(46% 0.11 216);
+      --amber: oklch(78% 0.14 78);
+      --amber-dark: oklch(54% 0.12 65);
+      --green: oklch(67% 0.13 158);
+      --red: oklch(62% 0.18 28);
+      --violet: oklch(61% 0.14 295);
+      --white: oklch(100% 0 0);
+      --sans: "Inter", "SF Pro Display", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.72; }
+    doc-page { --doc-page-w: 210mm; }
+    h1, h2, h3, h4, p, figure, table, ul, ol, pre { margin-top: 0; }
+    h1, h2, h3, h4 { color: var(--ink); line-height: 1.22; letter-spacing: -0.025em; }
+    h1 { margin-bottom: 14px; font-size: 38px; font-weight: 790; }
+    h2 { margin: 52px 0 18px; font-size: 25px; font-weight: 770; }
+    h3 { margin: 28px 0 12px; font-size: 17px; font-weight: 730; }
+    h4 { margin: 18px 0 8px; font-size: 13px; font-weight: 740; }
+    p { margin-bottom: 12px; color: var(--ink-soft); }
+    strong { color: var(--ink); font-weight: 730; }
+    a { color: var(--cyan-dark); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+    code { padding: .08em .34em; border-radius: 4px; background: var(--surface-2); color: var(--cyan-dark); font-family: var(--mono); font-size: .9em; }
+    pre { overflow: auto; padding: 14px 15px; border: 1px solid oklch(36% 0.045 247); border-radius: 9px; background: var(--navy); color: oklch(91% 0.018 247); font-family: var(--mono); font-size: 9px; line-height: 1.62; white-space: pre; tab-size: 2; break-inside: avoid; }
+    pre code { padding: 0; background: transparent; color: inherit; font-size: inherit; }
+    .kw { color: #7ddbe8; } .ty { color: #ffd783; } .st { color: #b8e39a; } .cm { color: #91a5ba; }
+
+    .running-header, .running-footer { color: var(--muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+    .running-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    .running-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--line); }
+    .brand-lockup { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-weight: 760; }
+    .brand-mark { width: 13px; height: 13px; border: 3px solid var(--cyan-dark); border-top-color: var(--amber); border-radius: 4px; transform: rotate(45deg); }
+
+    .hero { padding: 26px 0 8px; border-bottom: 1px solid var(--line); }
+    .eyebrow { margin-bottom: 14px; color: var(--cyan-dark); font-size: 11px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+    .hero-copy { max-width: 650px; margin-bottom: 22px; font-size: 16px; line-height: 1.65; color: var(--ink-soft); }
+    .hero-copy strong { color: var(--navy); }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-soft); font-size: 10px; font-weight: 650; }
+    .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan-dark); }
+    .hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--white); }
+    .stat { min-height: 76px; padding: 13px 14px; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat-value { margin-bottom: 2px; color: var(--navy); font-family: var(--mono); font-size: 19px; font-weight: 800; letter-spacing: -.04em; }
+    .stat-label { color: var(--muted); font-size: 10px; line-height: 1.4; }
+    .section-kicker { display: block; margin-bottom: 6px; color: var(--cyan-dark); font-family: var(--mono); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+    .lead { max-width: 670px; color: var(--ink-soft); font-size: 15px; }
+
+    .principles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 18px 0 4px; }
+    .principle { min-height: 118px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); break-inside: avoid; }
+    .principle-num { display: inline-grid; width: 26px; height: 26px; margin-bottom: 10px; place-items: center; border-radius: 6px; background: var(--navy); color: var(--white); font-family: var(--mono); font-size: 10px; font-weight: 800; }
+    .principle h3 { margin: 0 0 5px; font-size: 14px; }
+    .principle p { margin: 0; font-size: 11px; line-height: 1.55; }
+    .callout { margin: 18px 0; padding: 14px 16px; border-left: 4px solid var(--cyan-dark); background: oklch(96.5% 0.025 217); break-inside: avoid; }
+    .callout strong { display: block; margin-bottom: 2px; color: var(--navy); }
+    .callout p { margin: 0; font-size: 12px; }
+    .callout.warning { border-left-color: var(--amber-dark); background: oklch(97% 0.035 78); }
+    .callout.critical { border-left-color: var(--red); background: oklch(97% 0.025 28); }
+
+    .figure { margin: 20px 0 28px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); break-inside: avoid; }
+    .figure-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 12px; }
+    .figure-title { margin: 0; font-size: 13px; font-weight: 760; letter-spacing: -.01em; }
+    .figure-note { max-width: 320px; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.45; text-align: right; }
+    .diagram-frame { overflow: hidden; border-radius: 8px; background: var(--navy); }
+    svg { display: block; width: 100%; height: auto; }
+    figcaption { margin-top: 9px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+
+    .layer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 18px 0; }
+    .layer-card { padding: 13px; border-top: 3px solid var(--cyan-dark); background: var(--surface); break-inside: avoid; }
+    .layer-card:nth-child(2) { border-top-color: var(--amber-dark); }
+    .layer-card:nth-child(3) { border-top-color: var(--green); }
+    .layer-card:nth-child(4) { border-top-color: var(--violet); }
+    .layer-name { margin-bottom: 7px; font-size: 12px; font-weight: 780; }
+    .layer-role { margin-bottom: 7px; color: var(--ink-soft); font-size: 10px; line-height: 1.5; }
+    .layer-meta { color: var(--muted); font-family: var(--mono); font-size: 8px; }
+
+    table { width: 100%; margin: 16px 0 24px; border-collapse: collapse; font-size: 9px; line-height: 1.48; }
+    thead { color: var(--ink); background: var(--surface-2); }
+    th, td { padding: 8px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { font-size: 8.5px; font-weight: 800; letter-spacing: .035em; }
+    td { color: var(--ink-soft); }
+    td:first-child { color: var(--ink); font-weight: 700; }
+    .route-table td:nth-child(2), .route-table td:nth-child(3), .route-table td:nth-child(4) { text-align: center; }
+    .route-table td:nth-child(1), .route-table th:nth-child(1) { width: 24%; }
+    .yes { color: var(--green); font-weight: 800; }
+    .no { color: var(--muted); }
+    .maybe { color: var(--amber-dark); font-weight: 760; }
+    .event-pill { display: inline-block; margin: 1px 2px 1px 0; padding: 2px 5px; border-radius: 4px; background: var(--surface-2); color: var(--navy-2); font-family: var(--mono); font-size: 7.8px; font-weight: 700; }
+
+    .flow-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0 24px; }
+    .flow-card { padding: 13px; border: 1px solid var(--line); border-radius: 9px; break-inside: avoid; }
+    .flow-id { margin-bottom: 7px; color: var(--cyan-dark); font-family: var(--mono); font-size: 9px; font-weight: 800; }
+    .flow-card h3 { margin: 0 0 5px; font-size: 12px; }
+    .flow-card p { margin: 0; font-size: 9.5px; line-height: 1.55; }
+    .rule-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 16px 0 24px; }
+    .rule { padding: 12px; border: 1px solid var(--line); background: var(--surface); break-inside: avoid; }
+    .rule-key { margin-bottom: 4px; color: var(--cyan-dark); font-family: var(--mono); font-size: 9px; font-weight: 800; }
+    .rule-copy { color: var(--ink-soft); font-size: 10px; line-height: 1.55; }
+
+    .sources { margin: 12px 0 0; padding-left: 18px; color: var(--ink-soft); font-size: 10px; }
+    .sources li { margin-bottom: 6px; }
+    .closing { margin-top: 42px; padding: 22px; border-radius: 12px; background: var(--navy); color: var(--white); break-inside: avoid; }
+    .closing h2 { margin: 0 0 8px; color: var(--white); font-size: 22px; }
+    .closing p { max-width: 650px; margin: 0; color: oklch(86% 0.02 247); font-size: 13px; }
+    .closing-code { display: inline-block; margin-top: 14px; padding: 7px 10px; border: 1px solid oklch(55% 0.06 247); border-radius: 6px; color: var(--cyan); font-family: var(--mono); font-size: 10px; }
+
+    @media (max-width: 860px) {
+      .hero-stats, .layer-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .flow-cards { grid-template-columns: 1fr; }
+    }
+    @media print {
+      .hero { padding-top: 0; }
+      .figure { padding: 10px; }
+      .diagram-frame, pre { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <doc-page size="a4" margin="16mm">
+    <div slot="header" class="running-header">
+      <span class="brand-lockup"><span class="brand-mark"></span> AgentScope Java 2</span>
+      <span>自定义 Agent 实现指南 · v1.0</span>
+    </div>
+    <div slot="footer" class="running-footer">
+      <span>官方源码与文档核对版 · 2026-08-24</span>
+      <span>Java 21 · Reactor · HarnessAgent</span>
+    </div>
+
+    <h1>AgentScope Java 2<br>自定义 Agent 实现指南</h1>
+    <section class="hero" data-screen-label="01 实现总览">
+      <div class="eyebrow">Implementation Guide / Source-Verified</div>
+      <p class="hero-copy">以 <strong>HarnessAgent 作为无状态推理引擎</strong>，以 <code>(userId, sessionId)</code> 定位会话状态；通过 <code>streamEvents()</code> 把模型流、工具调用、人机协同与客户端消息装配成一条可路由的事件主线。</p>
+      <div class="meta-row">
+        <span class="chip"><span class="chip-dot"></span>源码快照 66c42bd</span>
+        <span class="chip"><span class="chip-dot"></span>仓库版本 2.0.3-SNAPSHOT</span>
+        <span class="chip"><span class="chip-dot"></span>31 类 AgentEvent</span>
+        <span class="chip"><span class="chip-dot"></span>Java 21 示例</span>
+      </div>
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-value">1</div><div class="stat-label">HarnessAgent 单例服务全部会话</div></div>
+        <div class="stat"><div class="stat-value">4</div><div class="stat-label">上下文来源：配置、状态、工作区、调用态</div></div>
+        <div class="stat"><div class="stat-value">31</div><div class="stat-label">当前源码中的事件类型</div></div>
+        <div class="stat"><div class="stat-value">2</div><div class="stat-label">数据型 Tool / 表达型 Tool</div></div>
+      </div>
+    </section>
+
+    <section data-screen-label="02 结论先行">
+      <h2><span class="section-kicker">01 / EXECUTIVE SUMMARY</span>四个实现结论</h2>
+      <div class="principles">
+        <article class="principle"><span class="principle-num">01</span><h3>Agent 启动不等于加载会话</h3><p>构造期只固定模型、Prompt、Toolkit、中间件、Workspace 与 Store；真正的 <code>AgentState</code> 在每次 call 入口按会话加载。</p></article>
+        <article class="principle"><span class="principle-num">02</span><h3>上下文每轮动态装配</h3><p>最终模型输入由系统提示、工作区注入、会话历史/摘要、当前输入和可用 Tool Schema 组成，不是一段固定字符串。</p></article>
+        <article class="principle"><span class="principle-num">03</span><h3>事件流不等于客户端消息流</h3><p>模型与工具事件先进入应用适配器；只有文本块、受支持的数据块和表达型 Tool 的成功结果才生成用户可见消息。</p></article>
+        <article class="principle"><span class="principle-num">04</span><h3>富消息以工具最终结果为准</h3><p><code>TOOL_CALL_END</code> 没有完整入参；卡片载荷必须在 Tool 或 Middleware 中补全并冻结，成功结束后再持久化和推送。</p></article>
+      </div>
+      <div class="callout"><strong>框架事实与项目约定</strong><p>Agent Loop、AgentState、事件字段和 Tool 执行机制来自 AgentScope Java 2 源码；“Ctrl 指令 / 用户可见消息指令”的映射是本文为当前分布式消息方案定义的应用层路由约定，并非 AgentScope 内置协议。</p></div>
+    </section>
+
+    <section data-screen-label="03 Agent Loop 生命周期">
+      <h2><span class="section-kicker">02 / AGENT LOOP</span>完整生命周期：加载、推理、行动、暂停与保存</h2>
+      <p class="lead">同一 <code>(userId, sessionId)</code> 的调用由框架串行化，不同会话可以并行。<code>call()</code> 与 <code>streamEvents()</code> 走同一条内部执行链；前者只筛出最终 <code>AgentResultEvent</code>，后者暴露全过程事件。</p>
+      <figure class="figure">
+        <div class="figure-head"><h3 class="figure-title">Agent Loop 生命周期图</h3><p class="figure-note">蓝色为常规主链路；黄色为 Tool 行动；紫色为暂停/恢复；灰色为状态持久化边界。</p></div>
+        <div class="diagram-frame">
+          <svg viewBox="0 0 920 860" role="img" aria-labelledby="loop-title loop-desc">
+            <title id="loop-title">AgentScope Java 2 Agent Loop 生命周期</title>
+            <desc id="loop-desc">请求进入后加载状态并进入推理循环，模型可能产生工具调用，工具执行后回到下一轮；需要确认或外部执行时暂停，最终保存状态。</desc>
+            <defs>
+              <marker id="loopArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#55c5d9"/></marker>
+              <marker id="loopAmber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#efbc5b"/></marker>
+              <marker id="loopPurple" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#bb93ed"/></marker>
+            </defs>
+            <rect width="920" height="860" fill="#17283d"/>
+            <text x="42" y="42" fill="#8fa2b8" font-family="ui-monospace, monospace" font-size="12" letter-spacing="2">LOAD → REASON → ACT → OBSERVE → REPEAT / PAUSE → SAVE</text>
+
+            <rect x="44" y="70" width="832" height="84" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="68" y="101" fill="#ffffff" font-family="system-ui" font-size="17" font-weight="700">01 · 调用入口与会话门</text>
+            <text x="68" y="127" fill="#afbfce" font-family="system-ui" font-size="12">streamEvents(input, RuntimeContext) · 同会话 FIFO 串行 · 发出 AGENT_START</text>
+            <rect x="670" y="91" width="176" height="40" rx="7" fill="#17283d" stroke="#55c5d9"/>
+            <text x="758" y="116" text-anchor="middle" fill="#75d6e5" font-family="ui-monospace" font-size="10">replyId + sessionId</text>
+            <path d="M460 154 L460 187" stroke="#55c5d9" stroke-width="2" marker-end="url(#loopArrow)"/>
+
+            <rect x="44" y="190" width="832" height="98" rx="10" fill="#1d3148" stroke="#3a5871"/>
+            <text x="68" y="221" fill="#ffffff" font-family="system-ui" font-size="17" font-weight="700">02 · 恢复调用态</text>
+            <text x="68" y="247" fill="#afbfce" font-family="system-ui" font-size="12">cache / AgentStateStore → AgentState → 注入 RuntimeContext → 追加本次消息或恢复事件</text>
+            <text x="68" y="268" fill="#75d6e5" font-family="ui-monospace" font-size="10">context · summary · permissions · plan · tasks · toolContext</text>
+            <path d="M460 288 L460 322" stroke="#55c5d9" stroke-width="2" marker-end="url(#loopArrow)"/>
+
+            <rect x="44" y="325" width="832" height="188" rx="10" fill="#163847" stroke="#55c5d9"/>
+            <text x="68" y="357" fill="#75d6e5" font-family="ui-monospace" font-size="11" font-weight="700">03 · REASONING ROUND</text>
+            <rect x="68" y="378" width="234" height="104" rx="8" fill="#23485a"/>
+            <text x="86" y="404" fill="#ffffff" font-family="system-ui" font-size="13" font-weight="700">装配模型输入</text>
+            <text x="86" y="429" fill="#bceaf0" font-family="system-ui" font-size="10">动态系统提示 + Workspace</text>
+            <text x="86" y="448" fill="#bceaf0" font-family="system-ui" font-size="10">AgentState 历史 / 摘要</text>
+            <text x="86" y="467" fill="#bceaf0" font-family="system-ui" font-size="10">Tool Schema + 当前提示</text>
+            <rect x="342" y="378" width="234" height="104" rx="8" fill="#23485a"/>
+            <text x="360" y="404" fill="#ffffff" font-family="system-ui" font-size="13" font-weight="700">调用模型</text>
+            <text x="360" y="429" fill="#bceaf0" font-family="ui-monospace" font-size="9">MODEL_CALL_START</text>
+            <text x="360" y="448" fill="#bceaf0" font-family="ui-monospace" font-size="9">TEXT / THINKING / TOOL_CALL …</text>
+            <text x="360" y="467" fill="#bceaf0" font-family="ui-monospace" font-size="9">MODEL_CALL_END</text>
+            <rect x="616" y="378" width="234" height="104" rx="8" fill="#23485a"/>
+            <text x="634" y="404" fill="#ffffff" font-family="system-ui" font-size="13" font-weight="700">判断下一步</text>
+            <text x="634" y="429" fill="#bceaf0" font-family="system-ui" font-size="10">纯文本 → 完成本轮</text>
+            <text x="634" y="448" fill="#bceaf0" font-family="system-ui" font-size="10">ToolUseBlock → Acting</text>
+            <text x="634" y="467" fill="#bceaf0" font-family="system-ui" font-size="10">超限 / 中断 → 退出</text>
+            <path d="M302 430 L336 430" stroke="#55c5d9" stroke-width="2" marker-end="url(#loopArrow)"/>
+            <path d="M576 430 L610 430" stroke="#55c5d9" stroke-width="2" marker-end="url(#loopArrow)"/>
+            <path d="M735 513 L735 547" stroke="#efbc5b" stroke-width="2" marker-end="url(#loopAmber)"/>
+
+            <rect x="370" y="550" width="506" height="126" rx="10" fill="#3a3329" stroke="#efbc5b"/>
+            <text x="394" y="581" fill="#ffd783" font-family="ui-monospace" font-size="11" font-weight="700">04 · ACTING / TOOL BATCH</text>
+            <text x="394" y="608" fill="#ffffff" font-family="system-ui" font-size="13" font-weight="700">权限检查 → 串行 / 并发执行 → ToolResultBlock</text>
+            <text x="394" y="634" fill="#ddc9a6" font-family="ui-monospace" font-size="9">TOOL_RESULT_START → TEXT/DATA_DELTA → TOOL_RESULT_END</text>
+            <text x="394" y="655" fill="#ddc9a6" font-family="system-ui" font-size="10">成功 / 失败 / 拒绝结果追加到上下文，回到下一轮 Reasoning</text>
+            <path d="M370 614 L288 614 L288 420 L334 420" fill="none" stroke="#efbc5b" stroke-width="2" marker-end="url(#loopAmber)"/>
+
+            <rect x="44" y="550" width="286" height="126" rx="10" fill="#302b45" stroke="#bb93ed"/>
+            <text x="68" y="581" fill="#d6b9f5" font-family="ui-monospace" font-size="11" font-weight="700">PAUSE / RESUME</text>
+            <text x="68" y="607" fill="#ffffff" font-family="system-ui" font-size="12" font-weight="700">ASK：等待用户确认</text>
+            <text x="68" y="628" fill="#ffffff" font-family="system-ui" font-size="12" font-weight="700">EXTERNAL：等待外部执行</text>
+            <text x="68" y="652" fill="#cbbce0" font-family="ui-monospace" font-size="8.5">REQUIRE_* + REQUEST_STOP</text>
+            <path d="M370 585 L336 585" stroke="#bb93ed" stroke-width="2" marker-end="url(#loopPurple)"/>
+            <path d="M184 676 L184 708 L460 708 L460 682" fill="none" stroke="#bb93ed" stroke-width="2" marker-end="url(#loopPurple)"/>
+
+            <path d="M735 676 L735 722" stroke="#55c5d9" stroke-width="2" marker-end="url(#loopArrow)"/>
+            <rect x="44" y="725" width="832" height="90" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="68" y="757" fill="#ffffff" font-family="system-ui" font-size="17" font-weight="700">05 · 形成结果与收尾</text>
+            <text x="68" y="784" fill="#afbfce" font-family="system-ui" font-size="12">AGENT_RESULT(final Msg) → AGENT_END → 保存整份 AgentState → 释放会话门</text>
+            <rect x="668" y="746" width="178" height="42" rx="7" fill="#17283d" stroke="#486176"/>
+            <text x="757" y="764" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="10" font-weight="700">异常也执行 doFinally</text>
+            <text x="757" y="780" text-anchor="middle" fill="#91a5ba" font-family="ui-monospace" font-size="8.5">AGENT_END</text>
+          </svg>
+        </div>
+        <figcaption>图 1｜框架在每次调用边界自动恢复和保存 AgentState；需要用户确认或外部执行时，Loop 以事件形式暂停，并由后续调用携带结果恢复。</figcaption>
+      </figure>
+      <div class="callout warning"><strong>持久化语义</strong><p>AgentState 是在一次 <code>call / streamEvents</code> 结束时整体保存，不是每产生一个 block 就写一次 Store。分布式故障恢复仍需要应用层 lease、输入幂等和消息真相源来覆盖“执行中进程崩溃”的窗口。</p></div>
+    </section>
+
+    <section data-screen-label="04 上下文装配">
+      <h2><span class="section-kicker">03 / CONTEXT ASSEMBLY</span>Agent 从哪里加载上下文</h2>
+      <p class="lead">要区分三种时间：JVM 构造期加载静态能力；每次调用入口加载会话状态；每次 Reasoning Round 再动态拼装模型真正看到的上下文。</p>
+      <div class="layer-grid">
+        <article class="layer-card"><div class="layer-name">构造期 · Immutable Config</div><div class="layer-role">名称、基础 sysPrompt、Model、Toolkit、中间件、压缩策略、Workspace/Filesystem 与 Store。</div><div class="layer-meta">BUILDER · PROCESS LIFETIME</div></article>
+        <article class="layer-card"><div class="layer-name">调用期 · AgentState</div><div class="layer-role">按 <code>(userId, sessionId)</code> 从 cache / Store 恢复的会话历史、摘要、权限、计划、任务与工具状态。</div><div class="layer-meta">CALL ENTRY · SESSION SCOPE</div></article>
+        <article class="layer-card"><div class="layer-name">轮次期 · Workspace</div><div class="layer-role">AGENTS.md、MEMORY.md、知识库索引、附加上下文文件、会话/目录信息和技能摘要。</div><div class="layer-meta">EVERY REASONING ROUND</div></article>
+        <article class="layer-card"><div class="layer-name">瞬时态 · RuntimeContext</div><div class="layer-role">userId、sessionId、字符串属性、类型化对象及框架注入的 AgentState；作为每次调用的依赖载体。</div><div class="layer-meta">NOT PERSISTED BY DEFAULT</div></article>
+      </div>
+      <figure class="figure">
+        <div class="figure-head"><h3 class="figure-title">上下文装配图</h3><p class="figure-note">模型输入是多个上下文域在每一轮推理时的合成结果；工作区文件修改后，无需重建 Agent 即可在下一轮生效。</p></div>
+        <div class="diagram-frame">
+          <svg viewBox="0 0 920 690" role="img" aria-labelledby="ctx-title ctx-desc">
+            <title id="ctx-title">AgentScope Java 2 上下文装配</title>
+            <desc id="ctx-desc">构造配置、会话状态、工作区文件和运行时上下文共同组成最终模型请求。</desc>
+            <defs><marker id="ctxArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#55c5d9"/></marker></defs>
+            <rect width="920" height="690" fill="#17283d"/>
+            <text x="42" y="42" fill="#8fa2b8" font-family="ui-monospace" font-size="12" letter-spacing="2">CONFIGURE ONCE · LOAD PER CALL · ASSEMBLE PER ROUND</text>
+
+            <rect x="42" y="72" width="252" height="158" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="64" y="102" fill="#75d6e5" font-family="ui-monospace" font-size="10" font-weight="700">A · AGENT CONFIG</text>
+            <text x="64" y="130" fill="#ffffff" font-family="system-ui" font-size="12">基础 sysPrompt</text>
+            <text x="64" y="153" fill="#ffffff" font-family="system-ui" font-size="12">Model / Toolkit / Middleware</text>
+            <text x="64" y="176" fill="#ffffff" font-family="system-ui" font-size="12">Compaction / Permission</text>
+            <text x="64" y="199" fill="#91a5ba" font-family="ui-monospace" font-size="9">HarnessAgent.builder()</text>
+
+            <rect x="334" y="72" width="252" height="158" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="356" y="102" fill="#efbc5b" font-family="ui-monospace" font-size="10" font-weight="700">B · AGENT STATE</text>
+            <text x="356" y="130" fill="#ffffff" font-family="system-ui" font-size="12">Context：消息 / Tool 历史</text>
+            <text x="356" y="153" fill="#ffffff" font-family="system-ui" font-size="12">Summary：压缩摘要</text>
+            <text x="356" y="176" fill="#ffffff" font-family="system-ui" font-size="12">Permission / Plan / Tasks</text>
+            <text x="356" y="199" fill="#d7c49f" font-family="ui-monospace" font-size="9">AgentStateStore(uid, sid)</text>
+
+            <rect x="626" y="72" width="252" height="158" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="648" y="102" fill="#b8e39a" font-family="ui-monospace" font-size="10" font-weight="700">C · WORKSPACE</text>
+            <text x="648" y="130" fill="#ffffff" font-family="system-ui" font-size="12">AGENTS.md / MEMORY.md</text>
+            <text x="648" y="153" fill="#ffffff" font-family="system-ui" font-size="12">Knowledge / Additional Context</text>
+            <text x="648" y="176" fill="#ffffff" font-family="system-ui" font-size="12">Skills 元数据 / Session 信息</text>
+            <text x="648" y="199" fill="#a8cda1" font-family="ui-monospace" font-size="9">WorkspaceContextMiddleware</text>
+
+            <path d="M168 230 L168 284 L368 284 L368 322" fill="none" stroke="#55c5d9" stroke-width="2" marker-end="url(#ctxArrow)"/>
+            <path d="M460 230 L460 322" stroke="#efbc5b" stroke-width="2" marker-end="url(#ctxArrow)"/>
+            <path d="M752 230 L752 284 L552 284 L552 322" fill="none" stroke="#55c5d9" stroke-width="2" marker-end="url(#ctxArrow)"/>
+
+            <rect x="150" y="325" width="620" height="126" rx="12" fill="#0e4552" stroke="#55c5d9"/>
+            <text x="178" y="357" fill="#ffffff" font-family="system-ui" font-size="17" font-weight="750">每一轮动态构造 ModelRequest</text>
+            <text x="178" y="388" fill="#bceaf0" font-family="ui-monospace" font-size="10">system message = base prompt + workspace sections + middleware transforms</text>
+            <text x="178" y="414" fill="#bceaf0" font-family="ui-monospace" font-size="10">messages = summary + retained history + current input + tool results</text>
+            <text x="178" y="437" fill="#bceaf0" font-family="ui-monospace" font-size="10">tools = 当前已激活 Toolkit / ToolGroup 的 JSON Schema</text>
+
+            <rect x="42" y="505" width="350" height="122" rx="10" fill="#302b45" stroke="#bb93ed"/>
+            <text x="64" y="536" fill="#d6b9f5" font-family="ui-monospace" font-size="10" font-weight="700">D · RUNTIME CONTEXT</text>
+            <text x="64" y="563" fill="#ffffff" font-family="system-ui" font-size="12">userId / sessionId / attributes / typed objects</text>
+            <text x="64" y="587" fill="#cbbce0" font-family="system-ui" font-size="10">用于状态寻址、工具依赖注入和调用级元数据</text>
+            <text x="64" y="608" fill="#cbbce0" font-family="system-ui" font-size="10">默认不随 AgentState 一起持久化</text>
+            <path d="M392 566 L449 566" stroke="#bb93ed" stroke-width="2" marker-end="url(#ctxArrow)"/>
+
+            <rect x="452" y="505" width="426" height="122" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="476" y="536" fill="#ffffff" font-family="system-ui" font-size="15" font-weight="700">LLM 看到的最终上下文</text>
+            <text x="476" y="565" fill="#afbfce" font-family="system-ui" font-size="11">人格与约束 · 长短期记忆 · 对话轨迹 · Tool 能力</text>
+            <text x="476" y="589" fill="#afbfce" font-family="system-ui" font-size="11">本轮用户输入 · ToolResult 观察 · 中间件提示</text>
+            <text x="476" y="610" fill="#75d6e5" font-family="ui-monospace" font-size="9">→ ModelResponse → AgentEvent stream</text>
+          </svg>
+        </div>
+        <figcaption>图 2｜AgentState 与 Workspace 是两个不同的持久化域：前者保存会话运行状态，后者保存人格、长期记忆、知识与技能定义。</figcaption>
+      </figure>
+
+      <h3>AgentState 具体由哪些内容组成</h3>
+      <table>
+        <thead><tr><th>字段</th><th>主要内容</th><th>进入模型上下文的方式</th><th>持久化</th></tr></thead>
+        <tbody>
+          <tr><td><code>context</code></td><td>用户消息、assistant 回复、ToolUseBlock、ToolResultBlock</td><td>作为消息历史直接进入下一轮，可能被压缩策略裁剪</td><td>是</td></tr>
+          <tr><td><code>summary</code></td><td>上下文压缩产生的摘要</td><td>替代被裁掉的早期消息，保留长期语义</td><td>是</td></tr>
+          <tr><td><code>permissionContext</code></td><td>Tool allow / ask / deny 规则与模式</td><td>影响 Tool 是否执行，不一定直接展示给模型</td><td>是</td></tr>
+          <tr><td><code>planModeContext</code></td><td>Plan Mode 状态、计划文件路径</td><td>由 Middleware 生成约束或提示</td><td>是</td></tr>
+          <tr><td><code>tasksContext</code></td><td><code>todo_write</code> 维护的任务清单</td><td>由任务中间件注入提示</td><td>是</td></tr>
+          <tr><td><code>toolContext</code></td><td>已激活 ToolGroup / Skill Tool 状态</td><td>决定本轮向模型暴露哪些 Tool Schema</td><td>是</td></tr>
+          <tr><td><code>InterruptControl</code></td><td>本会话的停止信号</td><td>只参与流程控制</td><td>否，瞬态</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section data-screen-label="05 Event 全景">
+      <h2><span class="section-kicker">04 / EVENT CATALOG</span>Agent Loop 会产生哪些事件</h2>
+      <p class="lead">当前源码枚举共 <strong>31</strong> 类。README 的“28 typed events”与当前代码不同步；实现应依赖源码枚举和兼容的默认分支，不要硬编码总数校验。</p>
+      <table>
+        <thead><tr><th>事件族</th><th>事件类型</th><th>关键关联字段</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td>Agent 生命周期</td><td><span class="event-pill">AGENT_START</span><span class="event-pill">AGENT_RESULT</span><span class="event-pill">AGENT_END</span></td><td><code>replyId</code>、sessionId、最终 Msg</td><td>标记一次 turn 的开始、权威结果和结束</td></tr>
+          <tr><td>模型调用</td><td><span class="event-pill">MODEL_CALL_START</span><span class="event-pill">MODEL_CALL_END</span></td><td><code>replyId</code>、ChatUsage</td><td>切换 reasoning 状态、统计 token 与时延</td></tr>
+          <tr><td>文本块</td><td><span class="event-pill">TEXT_BLOCK_START</span><span class="event-pill">TEXT_BLOCK_DELTA</span><span class="event-pill">TEXT_BLOCK_END</span></td><td><code>replyId</code>、<code>blockId</code>、delta</td><td>用户可见流式文本的主来源</td></tr>
+          <tr><td>思考块</td><td><span class="event-pill">THINKING_BLOCK_START</span><span class="event-pill">THINKING_BLOCK_DELTA</span><span class="event-pill">THINKING_BLOCK_END</span></td><td><code>replyId</code>、blockId、delta</td><td>模型思考流；默认仅监控，不对用户展示</td></tr>
+          <tr><td>数据块</td><td><span class="event-pill">DATA_BLOCK_START</span><span class="event-pill">DATA_BLOCK_DELTA</span><span class="event-pill">DATA_BLOCK_END</span></td><td><code>replyId</code>、blockId、ContentBlock</td><td>图片、音频或其他结构化 ContentBlock</td></tr>
+          <tr><td>Tool 调用</td><td><span class="event-pill">TOOL_CALL_START</span><span class="event-pill">TOOL_CALL_DELTA</span><span class="event-pill">TOOL_CALL_END</span></td><td><code>toolCallId</code>、toolCallName、delta</td><td>模型生成 ToolUseBlock 的过程；End 不含完整入参</td></tr>
+          <tr><td>Tool 结果</td><td><span class="event-pill">TOOL_RESULT_START</span><span class="event-pill">TOOL_RESULT_TEXT_DELTA</span><span class="event-pill">TOOL_RESULT_DATA_DELTA</span><span class="event-pill">TOOL_RESULT_END</span></td><td><code>toolCallId</code>、delta/data、state</td><td>执行进度与最终 SUCCESS / ERROR / DENIED 等状态</td></tr>
+          <tr><td>暂停与控制</td><td><span class="event-pill">EXCEED_MAX_ITERS</span><span class="event-pill">REQUIRE_USER_CONFIRM</span><span class="event-pill">REQUIRE_EXTERNAL_EXECUTION</span><span class="event-pill">USER_CONFIRM_RESULT</span><span class="event-pill">EXTERNAL_EXECUTION_RESULT</span><span class="event-pill">REQUEST_STOP</span></td><td>待确认 ToolUseBlock、外部结果、reason</td><td>人机协同、外部执行、停止与超轮次</td></tr>
+          <tr><td>扩展与系统</td><td><span class="event-pill">SUBAGENT_EXPOSED</span><span class="event-pill">HINT_BLOCK</span><span class="event-pill">ALL_TOOLS_DENIED</span><span class="event-pill">CUSTOM</span></td><td>subagent、hint source、name/value</td><td>子 Agent 入口、动态提示、权限结果和自定义扩展</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warning"><strong>关联键规则</strong><p>文本/思考/数据块以 <code>(replyId, blockId)</code> 聚合；Tool 调用和结果以 <code>(replyId, toolCallId)</code> 聚合。不要依赖事件到达时的“最后一个活动块”推断归属。</p></div>
+    </section>
+
+    <section data-screen-label="06 Event 路由">
+      <h2><span class="section-kicker">05 / EVENT ROUTING</span>哪些事件生成 Ctrl，哪些生成用户可见消息</h2>
+      <p class="lead">适配器把同一条 AgentEvent 流分成三条语义不同的输出：瞬时 Ctrl 状态、持久化用户消息、诊断日志。路由必须集中在一个单写者中，避免并发 Tool 和 Text 破坏消息顺序。</p>
+      <table class="route-table">
+        <thead><tr><th>事件</th><th>Ctrl</th><th>用户消息</th><th>仅日志</th><th>建议处理</th></tr></thead>
+        <tbody>
+          <tr><td><code>AGENT_START</code></td><td class="yes">●</td><td class="no">—</td><td class="maybe">○</td><td><code>turnActive=true</code>，锁定输入，记录 activeReplyId</td></tr>
+          <tr><td><code>MODEL_CALL_START / END</code></td><td class="yes">●</td><td class="no">—</td><td class="yes">●</td><td>phase=reasoning；End 记录 token usage</td></tr>
+          <tr><td><code>TEXT_BLOCK_START</code></td><td class="maybe">○</td><td class="no">—</td><td class="maybe">○</td><td>初始化 <code>(replyId, blockId)</code> 缓冲区</td></tr>
+          <tr><td><code>TEXT_BLOCK_DELTA</code></td><td class="no">—</td><td class="yes">●</td><td class="maybe">○</td><td>80ms / 1–4KB 合并，生成文本 append 指令</td></tr>
+          <tr><td><code>TEXT_BLOCK_END</code></td><td class="no">—</td><td class="yes">●</td><td class="maybe">○</td><td>flush 并 commit 当前逻辑文本消息，不新建重复消息</td></tr>
+          <tr><td><code>THINKING_BLOCK_*</code></td><td class="no">—</td><td class="no">—</td><td class="yes">●</td><td>默认不透出思考；只用于受控可观测性</td></tr>
+          <tr><td><code>DATA_BLOCK_*</code></td><td class="no">—</td><td class="maybe">○</td><td class="maybe">○</td><td>仅对 UI 已声明支持的 ContentBlock 生成媒体消息</td></tr>
+          <tr><td><code>TOOL_CALL_START</code></td><td class="yes">●</td><td class="no">—</td><td class="yes">●</td><td>phase=acting，显示可选的“正在查询”进度</td></tr>
+          <tr><td><code>TOOL_CALL_DELTA</code></td><td class="no">—</td><td class="no">—</td><td class="yes">●</td><td>只累计工具入参，绝不提前生成富消息</td></tr>
+          <tr><td><code>TOOL_CALL_END</code></td><td class="yes">●</td><td class="no">—</td><td class="yes">●</td><td>工具参数生成完毕；事件本身没有完整参数</td></tr>
+          <tr><td><code>TOOL_RESULT_START</code></td><td class="yes">●</td><td class="no">—</td><td class="maybe">○</td><td>保持 phase=acting，开始接收执行输出</td></tr>
+          <tr><td><code>TOOL_RESULT_*_DELTA</code></td><td class="no">—</td><td class="maybe">○</td><td class="yes">●</td><td>默认不展示；仅白名单进度或媒体数据可透出</td></tr>
+          <tr><td><code>TOOL_RESULT_END</code></td><td class="yes">●</td><td class="maybe">○</td><td class="yes">●</td><td>表达型 Tool 且 SUCCESS 时生成一次冻结富消息；数据型 Tool 不展示</td></tr>
+          <tr><td><code>REQUIRE_USER_CONFIRM</code></td><td class="yes">●</td><td class="maybe">○</td><td class="yes">●</td><td>phase=waiting_confirm，开放输入；确认卡属于交互消息</td></tr>
+          <tr><td><code>REQUIRE_EXTERNAL_EXECUTION</code></td><td class="yes">●</td><td class="maybe">○</td><td class="yes">●</td><td>phase=waiting_external；按产品需要展示外部动作卡</td></tr>
+          <tr><td><code>USER_CONFIRM_RESULT / EXTERNAL_EXECUTION_RESULT</code></td><td class="yes">●</td><td class="no">—</td><td class="yes">●</td><td>恢复 phase=reasoning，重新锁定输入</td></tr>
+          <tr><td><code>REQUEST_STOP</code></td><td class="yes">●</td><td class="no">—</td><td class="yes">●</td><td><code>stopping=true</code>；等待 AgentEnd 收敛</td></tr>
+          <tr><td><code>EXCEED_MAX_ITERS</code></td><td class="yes">●</td><td class="maybe">○</td><td class="yes">●</td><td>phase=failed；可生成一条产品化错误消息</td></tr>
+          <tr><td><code>AGENT_RESULT</code></td><td class="no">—</td><td class="maybe">○</td><td class="yes">●</td><td>作为最终权威对账/兜底，避免复制已流式落库的内容</td></tr>
+          <tr><td><code>AGENT_END</code></td><td class="yes">●</td><td class="no">—</td><td class="yes">●</td><td>turnActive=false，phase=idle，清空 activeReplyId</td></tr>
+          <tr><td><code>SUBAGENT_EXPOSED</code></td><td class="maybe">○</td><td class="yes">●</td><td class="yes">●</td><td>生成“打开子 Agent 会话”的可操作消息</td></tr>
+          <tr><td><code>HINT_BLOCK / ALL_TOOLS_DENIED</code></td><td class="maybe">○</td><td class="no">—</td><td class="yes">●</td><td>内部提示与权限状态，默认不直出用户</td></tr>
+          <tr><td><code>CUSTOM</code></td><td class="maybe">○</td><td class="maybe">○</td><td class="yes">●</td><td>必须按 custom name 显式注册协议，未知事件只记日志</td></tr>
+        </tbody>
+      </table>
+      <div class="callout critical"><strong>ToolCall End 的边界</strong><p>源码中的 <code>ToolCallEndEvent</code> 只有 <code>replyId / toolCallId / toolCallName</code>。如果业务需要完整 JSON 入参，应累计 <code>ToolCallDelta</code>，或更稳妥地在 <code>onActing</code> Middleware / Tool 内取得已解析参数。富消息一定等待 Tool 成功和载荷冻结后再发。</p></div>
+
+      <h3>Delta Text Block 的正确处理</h3>
+      <div class="flow-cards">
+        <article class="flow-card"><div class="flow-id">STEP 01 · CORRELATE</div><h3>按 block 建缓冲区</h3><p>Start 创建缓冲区；Delta 按 <code>(replyId, blockId)</code> 追加。不要把同一 reply 中多个块拼错。</p></article>
+        <article class="flow-card"><div class="flow-id">STEP 02 · COALESCE</div><h3>合并小碎片</h3><p>以时间或字节阈值批量生成 append 指令，降低 DB/outbox 写放大，同时保持实时感。</p></article>
+        <article class="flow-card"><div class="flow-id">STEP 03 · COMMIT</div><h3>End 强制 flush</h3><p>对当前逻辑消息落最终内容和完成状态；客户端以 instructionId 幂等，断线后可重放。</p></article>
+      </div>
+      <pre><code><span class="cm">// 应用层伪代码：ClientInstruction / MessageWriter 为本项目类型</span>
+<span class="kw">switch</span> (event.getType()) {
+  <span class="kw">case</span> TEXT_BLOCK_START -&gt; textBuffer.open(replyId, blockId);
+  <span class="kw">case</span> TEXT_BLOCK_DELTA -&gt; textBuffer.append(replyId, blockId, event.getDelta());
+  <span class="kw">case</span> TEXT_BLOCK_END -&gt; messageWriter.commit(textBuffer.flush(replyId, blockId));
+  <span class="kw">case</span> AGENT_END -&gt; ctrlWriter.publish(CtrlState.idle(sessionId));
+  <span class="kw">default</span> -&gt; diagnostics.append(event);
+}</code></pre>
+    </section>
+
+    <section data-screen-label="07 Tool 总体原理">
+      <h2><span class="section-kicker">06 / CUSTOM TOOLS</span>自定义 Tool：一个执行协议，两种业务语义</h2>
+      <p class="lead">所有 Tool 都把“模型的 JSON 参数”转换为 <code>Mono&lt;ToolResultBlock&gt;</code>。Toolkit 负责向模型暴露 JSON Schema、解析 ToolUseBlock、执行权限检查，并通过基础设施层统一调度、超时、重试和异常转换。</p>
+      <figure class="figure">
+        <div class="figure-head"><h3 class="figure-title">Tool 调用与事件生成流程</h3><p class="figure-note">默认无自定义 executor 时，ToolExecutor 在 <code>Schedulers.boundedElastic()</code> 上调度；反应式外部调用仍应保持非阻塞。</p></div>
+        <div class="diagram-frame">
+          <svg viewBox="0 0 920 515" role="img" aria-labelledby="tool-title tool-desc">
+            <title id="tool-title">AgentScope Tool 调用流程</title>
+            <desc id="tool-desc">模型读取工具 schema，生成工具调用，Toolkit 权限检查和执行，工具结果回到上下文并生成事件。</desc>
+            <defs><marker id="toolArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#55c5d9"/></marker></defs>
+            <rect width="920" height="515" fill="#17283d"/>
+            <text x="42" y="42" fill="#8fa2b8" font-family="ui-monospace" font-size="12" letter-spacing="2">SCHEMA → TOOL USE → PERMISSION → EXECUTION → RESULT → NEXT ROUND</text>
+
+            <rect x="44" y="84" width="148" height="112" rx="9" fill="#223851" stroke="#486176"/>
+            <text x="118" y="115" text-anchor="middle" fill="#75d6e5" font-family="ui-monospace" font-size="10">TOOLKIT</text>
+            <text x="118" y="142" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="12" font-weight="700">JSON Schema</text>
+            <text x="118" y="166" text-anchor="middle" fill="#afbfce" font-family="system-ui" font-size="10">name · description</text>
+            <path d="M192 140 L236 140" stroke="#55c5d9" stroke-width="2" marker-end="url(#toolArrow)"/>
+
+            <rect x="240" y="84" width="148" height="112" rx="9" fill="#223851" stroke="#486176"/>
+            <text x="314" y="115" text-anchor="middle" fill="#75d6e5" font-family="ui-monospace" font-size="10">MODEL</text>
+            <text x="314" y="142" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="12" font-weight="700">ToolUseBlock</text>
+            <text x="314" y="166" text-anchor="middle" fill="#afbfce" font-family="system-ui" font-size="10">id · name · input</text>
+            <path d="M388 140 L432 140" stroke="#55c5d9" stroke-width="2" marker-end="url(#toolArrow)"/>
+
+            <rect x="436" y="84" width="148" height="112" rx="9" fill="#302b45" stroke="#bb93ed"/>
+            <text x="510" y="115" text-anchor="middle" fill="#d6b9f5" font-family="ui-monospace" font-size="10">PERMISSION</text>
+            <text x="510" y="142" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="12" font-weight="700">ALLOW / ASK / DENY</text>
+            <text x="510" y="166" text-anchor="middle" fill="#cbbce0" font-family="system-ui" font-size="10">readOnly 参与判定</text>
+            <path d="M584 140 L628 140" stroke="#55c5d9" stroke-width="2" marker-end="url(#toolArrow)"/>
+
+            <rect x="632" y="84" width="244" height="112" rx="9" fill="#3a3329" stroke="#efbc5b"/>
+            <text x="754" y="115" text-anchor="middle" fill="#ffd783" font-family="ui-monospace" font-size="10">TOOL EXECUTOR</text>
+            <text x="754" y="142" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="12" font-weight="700">callAsync(ToolCallParam)</text>
+            <text x="754" y="166" text-anchor="middle" fill="#ddc9a6" font-family="system-ui" font-size="10">schedule · timeout · retry · error</text>
+
+            <path d="M754 196 L754 248" stroke="#55c5d9" stroke-width="2" marker-end="url(#toolArrow)"/>
+            <rect x="436" y="252" width="440" height="100" rx="10" fill="#0e4552" stroke="#55c5d9"/>
+            <text x="460" y="283" fill="#ffffff" font-family="system-ui" font-size="15" font-weight="700">ToolResultBlock</text>
+            <text x="460" y="309" fill="#bceaf0" font-family="system-ui" font-size="11">output blocks · metadata · SUCCESS / ERROR / DENIED / …</text>
+            <text x="460" y="331" fill="#bceaf0" font-family="system-ui" font-size="10">中间 emitter chunk 进入事件 / hook；只有最终返回值进入 LLM</text>
+            <path d="M436 302 L390 302" stroke="#55c5d9" stroke-width="2" marker-end="url(#toolArrow)"/>
+
+            <rect x="44" y="252" width="346" height="100" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="68" y="283" fill="#ffffff" font-family="system-ui" font-size="15" font-weight="700">追加到 AgentState.context</text>
+            <text x="68" y="309" fill="#afbfce" font-family="system-ui" font-size="11">ToolUseBlock + ToolResultBlock 成为下一轮观察</text>
+            <text x="68" y="331" fill="#75d6e5" font-family="ui-monospace" font-size="9">→ Reasoning Round N+1</text>
+
+            <rect x="44" y="404" width="832" height="66" rx="10" fill="#1d3148" stroke="#3a5871"/>
+            <text x="68" y="431" fill="#efbc5b" font-family="ui-monospace" font-size="9">EVENT SIDE CHANNEL</text>
+            <text x="68" y="452" fill="#ffffff" font-family="ui-monospace" font-size="9">TOOL_CALL_* → TOOL_RESULT_START → TOOL_RESULT_TEXT/DATA_DELTA → TOOL_RESULT_END</text>
+          </svg>
+        </div>
+        <figcaption>图 3｜Tool 的最终返回值用于下一轮模型推理；ToolEmitter 的中间 chunk 只进入 hook / 事件侧通道，不会作为最终 ToolResult 直接发送给 LLM。</figcaption>
+      </figure>
+
+      <h3>公共实现约束</h3>
+      <div class="rule-grid">
+        <div class="rule"><div class="rule-key">SCHEMA FIRST</div><div class="rule-copy">工具名用 snake_case；description 明确“何时调用、返回什么”；输入严格采用 JSON Schema，并限制数组大小和字符串长度。</div></div>
+        <div class="rule"><div class="rule-key">REACTIVE RESULT</div><div class="rule-copy">显式 Tool 实现 <code>AgentTool</code> 或继承 <code>ToolBase</code>，统一返回 <code>Mono&lt;ToolResultBlock&gt;</code>；业务错误转换为可理解的 ToolResult。</div></div>
+        <div class="rule"><div class="rule-key">PERMISSION</div><div class="rule-copy">纯查询标记 <code>readOnly=true</code>；只有线程安全、无共享可变状态的工具标记 <code>concurrencySafe=true</code>。</div></div>
+        <div class="rule"><div class="rule-key">SMALL OBSERVATION</div><div class="rule-copy">给 LLM 的 output 要精简；大对象、UI 载荷和审计字段放 metadata 或业务存储，避免污染后续上下文。</div></div>
+      </div>
+    </section>
+
+    <section data-screen-label="08 数据型 Tool">
+      <h2><span class="section-kicker">07 / DATA TOOL</span>第一类：调用外部接口获取数据</h2>
+      <p class="lead">这种 Tool 是“认知型 Tool”：为模型补充事实，结果回到 Agent Loop 的下一轮推理，默认不直接生成客户端消息。它应隔离外部协议，把响应规范化成稳定、小型的领域 DTO。</p>
+      <div class="flow-cards">
+        <article class="flow-card"><div class="flow-id">01 · VALIDATE</div><h3>校验模型入参</h3><p>把 Map 转换为 Java 21 record；校验城市、日期、页大小等业务不变量，拒绝模糊或过大的请求。</p></article>
+        <article class="flow-card"><div class="flow-id">02 · FETCH</div><h3>调用 Gateway</h3><p>通过 Reactor Gateway 请求外部 API，配置超时、有限重试、熔断和 traceId；敏感 header 不进入 ToolResult。</p></article>
+        <article class="flow-card"><div class="flow-id">03 · NORMALIZE</div><h3>形成精简观察</h3><p>去除供应商字段，把结果转为摘要 JSON；保留 source、dataAsOf 和结果数量用于解释与审计。</p></article>
+      </div>
+      <pre><code><span class="kw">public final class</span> <span class="ty">SearchHotelsTool</span> <span class="kw">extends</span> <span class="ty">ToolBase</span> {
+  <span class="kw">private final</span> <span class="ty">HotelGateway</span> gateway;
+  <span class="kw">private final</span> <span class="ty">ObjectMapper</span> mapper;
+
+  <span class="kw">public</span> SearchHotelsTool(<span class="ty">HotelGateway</span> gateway, <span class="ty">ObjectMapper</span> mapper) {
+    <span class="kw">super</span>(ToolBase.builder()
+        .name(<span class="st">"search_hotels"</span>)
+        .description(<span class="st">"按城市和入住日期查询实时酒店候选；需要事实数据时调用"</span>)
+        .inputSchema(Map.of(
+            <span class="st">"type"</span>, <span class="st">"object"</span>,
+            <span class="st">"properties"</span>, Map.of(
+                <span class="st">"city"</span>, Map.of(<span class="st">"type"</span>, <span class="st">"string"</span>),
+                <span class="st">"checkIn"</span>, Map.of(<span class="st">"type"</span>, <span class="st">"string"</span>, <span class="st">"format"</span>, <span class="st">"date"</span>),
+                <span class="st">"limit"</span>, Map.of(<span class="st">"type"</span>, <span class="st">"integer"</span>, <span class="st">"minimum"</span>, 1, <span class="st">"maximum"</span>, 10)),
+            <span class="st">"required"</span>, List.of(<span class="st">"city"</span>, <span class="st">"checkIn"</span>)))
+        .readOnly(<span class="kw">true</span>)
+        .concurrencySafe(<span class="kw">true</span>)
+        .build());
+    <span class="kw">this</span>.gateway = gateway;
+    <span class="kw">this</span>.mapper = mapper;
+  }
+
+  <span class="kw">@Override</span>
+  <span class="kw">public</span> Mono&lt;ToolResultBlock&gt; callAsync(ToolCallParam param) {
+    <span class="kw">var</span> query = mapper.convertValue(param.getInput(), HotelQuery.<span class="kw">class</span>);
+    <span class="kw">return</span> gateway.search(query)
+        .timeout(Duration.ofSeconds(3))
+        .map(result -&gt; ToolResultBlock.builder()
+            .output(List.of(TextBlock.builder()
+                .text(mapper.valueToTree(result.forModel()).toString())
+                .build()))
+            .metadata(Map.of(
+                <span class="st">"source"</span>, result.source(),
+                <span class="st">"dataAsOf"</span>, result.dataAsOf().toString(),
+                <span class="st">"resultCount"</span>, result.items().size()))
+            .build());
+  }
+}
+
+<span class="kw">record</span> <span class="ty">HotelQuery</span>(String city, LocalDate checkIn, int limit) {}</code></pre>
+      <div class="callout warning"><strong>错误策略</strong><p>网络超时、4xx/5xx 和供应商限流应转换成可供模型恢复的简短错误观察，例如“服务暂不可用，可缩小范围后重试”，同时把原始异常和响应体留在日志链路，不要直接暴露给用户或模型。</p></div>
+    </section>
+
+    <section data-screen-label="09 表达型 Tool">
+      <h2><span class="section-kicker">08 / PRESENTATION TOOL</span>第二类：生成特定格式消息</h2>
+      <p class="lead">这种 Tool 是“表达型 Tool”：模型决定展示哪种消息，Tool 负责补全、校验并冻结客户端协议。最终 <code>ToolResultBlock</code> 只给 LLM 一段短确认，完整 UI 载荷放入 metadata，由事件适配器转成一条可持久化富消息。</p>
+      <figure class="figure">
+        <div class="figure-head"><h3 class="figure-title">富消息 Tool 的双输出流程</h3><p class="figure-note">一份结果服务两个消费者：LLM 只需要短观察；客户端需要稳定、完整、可重放的冻结 payload。</p></div>
+        <div class="diagram-frame">
+          <svg viewBox="0 0 920 640" role="img" aria-labelledby="rich-title rich-desc">
+            <title id="rich-title">表达型 Tool 生成富消息的流程</title>
+            <desc id="rich-desc">模型生成结构化意图，工具补全并冻结消息，最终结果一部分返回模型，一部分经事件适配器持久化并推送客户端。</desc>
+            <defs><marker id="richArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#55c5d9"/></marker><marker id="richAmber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#efbc5b"/></marker></defs>
+            <rect width="920" height="640" fill="#17283d"/>
+            <text x="42" y="42" fill="#8fa2b8" font-family="ui-monospace" font-size="12" letter-spacing="2">INTENT → COMPLETE → FREEZE → TOOL RESULT → ROUTE ON SUCCESS</text>
+
+            <rect x="44" y="76" width="832" height="92" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="68" y="108" fill="#75d6e5" font-family="ui-monospace" font-size="10" font-weight="700">01 · MODEL INTENT</text>
+            <text x="68" y="136" fill="#ffffff" font-family="system-ui" font-size="14" font-weight="700">send_hotel_cards({ intro, hotelIds, selectionReason })</text>
+            <rect x="671" y="98" width="176" height="42" rx="7" fill="#17283d" stroke="#486176"/>
+            <text x="759" y="124" text-anchor="middle" fill="#91a5ba" font-family="ui-monospace" font-size="9">ToolUseBlock · parsed input</text>
+            <path d="M460 168 L460 203" stroke="#55c5d9" stroke-width="2" marker-end="url(#richArrow)"/>
+
+            <rect x="44" y="206" width="832" height="116" rx="10" fill="#3a3329" stroke="#efbc5b"/>
+            <text x="68" y="238" fill="#ffd783" font-family="ui-monospace" font-size="10" font-weight="700">02 · TOOL COMPLETION &amp; VALIDATION</text>
+            <text x="68" y="266" fill="#ffffff" font-family="system-ui" font-size="13" font-weight="700">补齐价格、图片、跳转链接与数据时间 → 协议校验 → 生成 messageId</text>
+            <text x="68" y="293" fill="#ddc9a6" font-family="system-ui" font-size="10">缺字段时在 Tool 内查询受控数据源；冻结后不再在历史重放时重新查询</text>
+            <path d="M460 322 L460 357" stroke="#efbc5b" stroke-width="2" marker-end="url(#richAmber)"/>
+
+            <rect x="190" y="360" width="540" height="100" rx="10" fill="#0e4552" stroke="#55c5d9"/>
+            <text x="214" y="391" fill="#ffffff" font-family="system-ui" font-size="15" font-weight="700">ToolResultBlock</text>
+            <text x="214" y="417" fill="#bceaf0" font-family="system-ui" font-size="11">output = “已展示 3 家酒店” · metadata.clientPayload = 冻结富消息</text>
+            <text x="214" y="440" fill="#bceaf0" font-family="ui-monospace" font-size="9">toolCallId 贯穿 ToolResult 事件，用于精准关联</text>
+            <path d="M360 460 L360 501" stroke="#55c5d9" stroke-width="2" marker-end="url(#richArrow)"/>
+            <path d="M560 460 L560 501" stroke="#efbc5b" stroke-width="2" marker-end="url(#richAmber)"/>
+
+            <rect x="44" y="504" width="370" height="88" rx="10" fill="#223851" stroke="#486176"/>
+            <text x="68" y="535" fill="#75d6e5" font-family="ui-monospace" font-size="10">LLM CONSUMER</text>
+            <text x="68" y="560" fill="#ffffff" font-family="system-ui" font-size="12" font-weight="700">短观察进入下一轮 AgentContext</text>
+            <text x="68" y="580" fill="#91a5ba" font-family="system-ui" font-size="9.5">避免把大 payload 重复塞进模型上下文</text>
+
+            <rect x="506" y="504" width="370" height="88" rx="10" fill="#3a3329" stroke="#efbc5b"/>
+            <text x="530" y="535" fill="#ffd783" font-family="ui-monospace" font-size="10">CLIENT CONSUMER</text>
+            <text x="530" y="560" fill="#ffffff" font-family="system-ui" font-size="12" font-weight="700">TOOL_RESULT_END(SUCCESS) → 富消息</text>
+            <text x="530" y="580" fill="#ddc9a6" font-family="system-ui" font-size="9.5">消息表 → outbox → 客户端；失败不展示半成品</text>
+          </svg>
+        </div>
+        <figcaption>图 4｜表达型 Tool 不应直接写客户端 outbox；让 Event Adapter 成为文本与富消息的统一单写者，才能保证顺序、幂等和失败语义一致。</figcaption>
+      </figure>
+
+      <pre><code><span class="kw">public final class</span> <span class="ty">SendHotelCardsTool</span> <span class="kw">extends</span> <span class="ty">ToolBase</span> {
+  <span class="kw">private final</span> <span class="ty">CardCompletionService</span> completion;
+  <span class="kw">private final</span> <span class="ty">ObjectMapper</span> mapper;
+
+  <span class="kw">public</span> SendHotelCardsTool(CardCompletionService completion, ObjectMapper mapper) {
+    <span class="kw">super</span>(ToolBase.builder()
+        .name(<span class="st">"send_hotel_cards"</span>)
+        .description(<span class="st">"向用户展示酒店卡片；候选已确定且需要结构化呈现时调用"</span>)
+        .inputSchema(HotelCardSchema.INPUT)
+        .readOnly(<span class="kw">true</span>)
+        .concurrencySafe(<span class="kw">true</span>)
+        .build());
+    <span class="kw">this</span>.completion = completion;
+    <span class="kw">this</span>.mapper = mapper;
+  }
+
+  <span class="kw">@Override</span>
+  <span class="kw">public</span> Mono&lt;ToolResultBlock&gt; callAsync(ToolCallParam param) {
+    <span class="kw">var</span> intent = mapper.convertValue(param.getInput(), HotelCardsIntent.<span class="kw">class</span>);
+    <span class="kw">return</span> completion.completeAndFreeze(intent, param.getRuntimeContext())
+        .map(payload -&gt; ToolResultBlock.builder()
+            .output(List.of(TextBlock.builder()
+                .text(<span class="st">"已向用户展示 %d 家酒店"</span>.formatted(payload.items().size()))
+                .build()))
+            .metadata(Map.of(
+                <span class="st">"clientMessageType"</span>, <span class="st">"hotel_cards.v1"</span>,
+                <span class="st">"clientMessageId"</span>, payload.messageId(),
+                <span class="st">"clientPayload"</span>, payload,
+                <span class="st">"dataAsOf"</span>, payload.dataAsOf().toString()))
+            .build());
+  }
+}
+
+<span class="cm">// Event Adapter：metadata 可由 onActing 中间件/Tool 执行侧按 toolCallId 暂存</span>
+<span class="kw">if</span> (event <span class="kw">instanceof</span> ToolResultEndEvent end
+    &amp;&amp; end.getState() == ToolResultState.SUCCESS
+    &amp;&amp; expressiveTools.contains(end.getToolCallName())) {
+  <span class="kw">return</span> richPayloadStore.take(end.getToolCallId())
+      .flatMap(messageWriter::persistThenPublish);
+}</code></pre>
+      <div class="callout"><strong>为什么不在 TOOL_CALL_END 直接发卡片</strong><p>该事件既没有完整参数，也不能证明 Tool 已执行成功，更不知道 Tool 是否已经补全缺失字段。正确时机是：Tool 内生成冻结 payload → 适配器按 toolCallId 关联 → <code>TOOL_RESULT_END(SUCCESS)</code> 后一次性持久化并推送。</p></div>
+    </section>
+
+    <section data-screen-label="10 Agent 组装">
+      <h2><span class="section-kicker">09 / ASSEMBLY</span>Agent 组装与调用示例</h2>
+      <p class="lead">生产环境优先用 <code>DistributedStore</code> 一键注入分布式 AgentState 与工作区后端；应用级 Tool 注册到同一 Toolkit，事件适配器订阅 <code>streamEvents()</code>。</p>
+      <pre><code><span class="kw">var</span> toolkit = <span class="kw">new</span> Toolkit();
+toolkit.registerTool(<span class="kw">new</span> SearchHotelsTool(hotelGateway, objectMapper));
+toolkit.registerTool(<span class="kw">new</span> SendHotelCardsTool(cardCompletion, objectMapper));
+
+DistributedStore store = RedisDistributedStore.fromJedis(jedis);
+
+HarnessAgent agent = HarnessAgent.builder()
+    .name(<span class="st">"travel_assistant"</span>)
+    .sysPrompt(<span class="st">"你是企业差旅助手；先查事实，再选择合适的消息格式表达。"</span>)
+    .model(<span class="st">"dashscope:qwen-plus"</span>)
+    .workspace(Path.of(<span class="st">".agentscope/workspace"</span>))
+    .toolkit(toolkit)
+    .distributedStore(store)
+    .middleware(<span class="kw">new</span> ClientMessageCaptureMiddleware(richPayloadStore))
+    .build();
+
+RuntimeContext rc = RuntimeContext.builder()
+    .userId(userId)
+    .sessionId(sessionId)
+    .put(RequestTrace.<span class="kw">class</span>, trace)
+    .build();
+
+Flux&lt;AgentEvent&gt; events = agent.streamEvents(<span class="kw">new</span> UserMessage(text), rc);
+<span class="kw">return</span> eventAdapter.route(events); <span class="cm">// ctrl / message / diagnostics</span></code></pre>
+      <div class="callout warning"><strong>示例边界</strong><p><code>ClientMessageCaptureMiddleware</code>、<code>RichPayloadStore</code>、<code>EventAdapter</code> 与客户端指令类型属于应用层自定义实现；AgentScope 提供的是 Middleware、RuntimeContext、Tool 与 AgentEvent 扩展点。</p></div>
+
+      <h3>建议的工程模块</h3>
+      <table>
+        <thead><tr><th>模块</th><th>职责</th><th>不应承担</th></tr></thead>
+        <tbody>
+          <tr><td><code>agent-config</code></td><td>HarnessAgent、Model、Toolkit、Store、Middleware 装配</td><td>客户端协议与消息落库</td></tr>
+          <tr><td><code>tool-data</code></td><td>外部数据查询、DTO 规范化、错误翻译</td><td>直接生成 UI 指令</td></tr>
+          <tr><td><code>tool-presentation</code></td><td>消息意图校验、字段补全、富消息冻结</td><td>绕过事件适配器直接写 outbox</td></tr>
+          <tr><td><code>event-adapter</code></td><td>Event 关联、文本合并、Ctrl 路由、富消息单写</td><td>重新调用模型或外部供应商</td></tr>
+          <tr><td><code>message-store</code></td><td>用户可见消息持久化、幂等、outbox</td><td>保存完整 AgentState</td></tr>
+          <tr><td><code>event-log</code></td><td>全量事件异步归档与观测</td><td>阻塞在线 Agent Loop</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section data-screen-label="11 验证清单">
+      <h2><span class="section-kicker">10 / ACCEPTANCE</span>实现与验收清单</h2>
+      <div class="rule-grid">
+        <div class="rule"><div class="rule-key">STATE</div><div class="rule-copy">相同会话跨 pod 能恢复 AgentState；相同会话并发请求被串行；不同会话可并行。</div></div>
+        <div class="rule"><div class="rule-key">CONTEXT</div><div class="rule-copy">能从观测中确认 system prompt、摘要、保留历史、Tool Schema 与 Workspace 注入的版本。</div></div>
+        <div class="rule"><div class="rule-key">TEXT</div><div class="rule-copy">Delta 乱序/重复测试、End flush、SSE 断线重放和 instructionId 幂等全部通过。</div></div>
+        <div class="rule"><div class="rule-key">CTRL</div><div class="rule-copy">Start、reasoning、acting、waiting、stopping、idle 状态机无跳变死锁，AgentEnd 始终收敛。</div></div>
+        <div class="rule"><div class="rule-key">DATA TOOL</div><div class="rule-copy">超时、限流、供应商错误被规范化；大响应不会直接进入 AgentState；密钥和原始响应不泄露。</div></div>
+        <div class="rule"><div class="rule-key">RICH TOOL</div><div class="rule-copy">Tool 失败不展示半成品；成功只生成一条冻结消息；历史重放不重新查询动态数据。</div></div>
+        <div class="rule"><div class="rule-key">HITL</div><div class="rule-copy">RequireUserConfirm / ExternalExecution 可暂停、持久化待办并由后续结果事件恢复。</div></div>
+        <div class="rule"><div class="rule-key">COMPATIBILITY</div><div class="rule-copy">未知 CUSTOM / 新增枚举默认进入诊断日志，核心链路不因版本增加事件而中断。</div></div>
+      </div>
+    </section>
+
+    <section data-screen-label="12 资料来源">
+      <h2><span class="section-kicker">11 / SOURCES</span>资料来源与版本说明</h2>
+      <p>本文以 2026-08-24 拉取的 AgentScope Java 官方仓库为准，源码提交 <code>66c42bd68fdfa5dce063e3850c784344483dbe54</code>，仓库 Maven revision 为 <code>2.0.3-SNAPSHOT</code>。示例按项目约定使用 Java 21。</p>
+      <ul class="sources">
+        <li><a href="https://github.com/agentscope-ai/agentscope-java">AgentScope Java 官方仓库</a>：框架源码、README 与版本信息。</li>
+        <li><a href="https://java.agentscope.io/v2/zh/docs/building-blocks/agent.html">Agent</a>：ReActAgent 生命周期、调用与流式接口。</li>
+        <li><a href="https://java.agentscope.io/v2/zh/docs/building-blocks/context.html">上下文与 AgentState</a>：状态组成、加载保存和会话隔离。</li>
+        <li><a href="https://java.agentscope.io/v2/zh/docs/building-blocks/message-and-event.html">消息与事件</a>：事件模型、block 与 ToolResult 状态。</li>
+        <li><a href="https://java.agentscope.io/v2/zh/docs/building-blocks/tool.html">Tool</a>：Toolkit、ToolBase、注解 Tool 与流式结果。</li>
+        <li><a href="https://java.agentscope.io/v2/zh/docs/building-blocks/middleware.html">Middleware</a>：onAgent / onReasoning / onActing / onModelCall 生命周期。</li>
+        <li><a href="https://java.agentscope.io/v2/zh/docs/harness/architecture.html">Harness 架构</a> 与 <a href="https://java.agentscope.io/v2/zh/docs/harness/workspace.html">Workspace</a>：动态系统提示、长期记忆、知识与技能注入。</li>
+      </ul>
+    </section>
+
+    <section class="closing" data-screen-label="13 结束">
+      <h2>把事件当作事实，把客户端消息当作投影</h2>
+      <p>AgentScope 负责推理循环、会话状态和 Tool 执行；应用层负责把事件安全地投影为 Ctrl 与用户可见消息。只要守住这个边界，自定义 Tool、富消息、多端重放与分布式恢复就可以独立演进。</p>
+      <span class="closing-code">HarnessAgent → AgentEvent → EventAdapter → Ctrl / Durable Message</span>
+    </section>
+  </doc-page>
+  <script src="../distributed-agent-architecture/doc-page.js"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+package io.agentharness.protocol;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
+/**
+ * 协议对象的 JSON 编解码。
+ *
+ * <p>两个反序列化开关是协议向前兼容的<b>全部</b>依据：
+ * <ul>
+ *   <li>{@code FAIL_ON_UNKNOWN_PROPERTIES = false} —— 新增字段被忽略而不是崩溃</li>
+ *   <li>{@code READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE = true} —— 新增枚举值落到
+ *       {@code UNKNOWN} 而不是崩溃</li>
+ * </ul>
+ * 关掉任何一个，服务端往前走一步就会把老客户端全部打死。
+ */
+public final class Json {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            // 未知枚举值落到 @JsonEnumDefaultValue 标注的常量，而不是抛异常。
+            // 少了这一行，服务端新增一种消息类型就会让所有老客户端的流当场断掉
+            .enable(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE)
+            .setSerializationInclusion(JsonInclude.Include.NON_NULL);
+
+    private Json() {
+    }
+
+    public static String write(Object value) {
+        try {
+            return MAPPER.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new ProtocolException("序列化失败：" + value.getClass().getSimpleName(), e);
+        }
+    }
+
+    public static <T> T read(String json, Class<T> type) {
+        Validate.notBlank(json, "json");
+        try {
+            return MAPPER.readValue(json, type);
+        } catch (Exception e) {
+            throw new ProtocolException("反序列化失败，目标类型 " + type.getSimpleName(), e);
+        }
+    }
+}

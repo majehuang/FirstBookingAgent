@@ -1,0 +1,50 @@
+# 本地开发用 PostgreSQL。
+#
+#   docker compose -f deploy/postgres/docker-compose.yml up -d
+#   ./bin/agent migrate
+#   ./bin/agent doctor --jdbc-url jdbc:postgresql://localhost:5432/agent
+#
+# 与 Redis 分开成两个 compose：两者的生命周期不一样。
+# Redis 里的东西（inbox / ready / lease）随时可以清掉重来，
+# PG 里的是真相源 —— 消息表清掉就等于把用户的聊天记录删了。
+
+name: agent-postgres
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-postgres
+    environment:
+      POSTGRES_DB: agent
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+      # 中文内容要按字节序排，避免 locale 差异导致的排序不一致
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      # 只绑本机，与 Redis 同样的理由
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    command:
+      - "postgres"
+      # 消息表是写多读少、且写入在 turn 的热路径上。
+      # 开发机上放宽同步落盘可以避免把 fsync 的抖动误判成链路问题；
+      # 生产必须是默认的 on —— 这里的 off 只适用于本地。
+      - "-c"
+      - "synchronous_commit=off"
+      # 慢查询阈值 50ms：消息表的插入应当是亚毫秒级，
+      # 超过 50ms 说明索引没走上或者连接池打满了
+      - "-c"
+      - "log_min_duration_statement=50"
+      - "-c"
+      - "max_connections=200"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

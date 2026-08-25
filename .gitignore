@@ -1,0 +1,27 @@
+# 构建产物
+target/
+*.jar
+*.class
+
+# 运行期产物
+.agentscope/
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# 系统
+.DS_Store
+
+# 本地凭据 —— 项目里的密钥一律走环境变量，
+# 这几条是防止有人图省事把它们落成文件
+.env
+.env.*
+!.env.example
+*.pem
+*.key

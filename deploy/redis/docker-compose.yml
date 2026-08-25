@@ -1,0 +1,73 @@
+# 本地开发用 Redis。
+#
+#   docker compose -f deploy/redis/docker-compose.yml up -d
+#   ./bin/agent doctor
+#
+# 主从（验证 Lua 的效果复制）：
+#   docker compose -f deploy/redis/docker-compose.yml --profile ha up -d
+#
+# 版本刻意锁 7.0：阿里云只提供 7.0 / 6.0 / 5.0 / 4.0，没有 6.2 这一档。
+# 本地用更新的 Redis 会让人不知不觉依赖上生产没有的能力 ——
+# 比如 XREADGROUP 的 CLAIM 参数是 8.4 才有的，用了就回不去了。
+
+name: agent-redis
+
+services:
+  redis:
+    image: redis:7.0.15-alpine
+    container_name: agent-redis
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      # 只绑本机。改成 0.0.0.0 等于在局域网上放一个无鉴权 Redis
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  # 从库。默认不启动，加 --profile ha 才起。
+  #
+  # 它存在的唯一目的是验证一件事：脚本里的 XADD ... * 是非确定性命令，
+  # Redis 5+ 走效果复制理论上没问题，但「理论上」需要一个从库才能看见。
+  # 起从库后对比主从的 stream ID 是否一致 —— 不一致就说明复制方式有问题，
+  # 那会直接推翻 INV-11 的设计（ctrl 水位与 XADD 原子产生）。
+  redis-replica:
+    profiles: ["ha"]
+    image: redis:7.0.15-alpine
+    container_name: agent-redis-replica
+    command:
+      - "redis-server"
+      - "/usr/local/etc/redis/redis.conf"
+      - "--replicaof"
+      - "redis"
+      - "6379"
+      - "--replica-read-only"
+      - "yes"
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-replica-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  redis-replica-data:

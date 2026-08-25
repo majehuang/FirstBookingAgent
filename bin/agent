@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# 开发期入口。生产部署直接用 java -jar agent-cli/target/agent.jar
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+JAR="$ROOT/agent-cli/target/agent.jar"
+
+if [[ ! -f "$JAR" ]]; then
+  echo "未找到 $JAR" >&2
+  echo "先构建： mvn -q -DskipTests package" >&2
+  exit 1
+fi
+
+exec java -Dfile.encoding=UTF-8 -jar "$JAR" "$@"

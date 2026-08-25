@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.agentharness</groupId>
+    <artifactId>java-agent-sdk</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>agent-engine</artifactId>
+  <name>agent-engine</name>
+  <description>AgentScope Java 适配层 —— HarnessAgent 装配、事件映射、PG 版的两个 Store 实现</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.agentharness</groupId>
+      <artifactId>agent-protocol</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.agentharness</groupId>
+      <artifactId>agent-store</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.agentharness</groupId>
+      <artifactId>agent-tui</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.agentscope</groupId>
+      <artifactId>agentscope-harness</artifactId>
+    </dependency>
+    <!-- 模型提供者按 SPI 装配：放进 classpath 即可被 ModelRegistry 发现。
+         OpenAI 那个同时覆盖 Kimi / MiniMax / GLM / DeepSeek 的兼容端点 -->
+    <dependency>
+      <groupId>io.agentscope</groupId>
+      <artifactId>agentscope-extensions-model-openai</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.agentscope</groupId>
+      <artifactId>agentscope-extensions-model-dashscope</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.projectreactor</groupId>
+      <artifactId>reactor-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+  </dependencies>
+</project>
