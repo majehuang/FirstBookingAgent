@@ -74,7 +74,7 @@ class SessionWorkerBehaviourTest {
         OutboxStream outbox = new OutboxStream(runtime, 10_000L, TraceSink.disabled());
         EventLogRepository coldStore = (s, replyId, type, payload) -> {
         };
-        return new SessionWorker(runtime, repository, engine,
+        return new SessionWorker(runtime, TestLeases.control(runtime), repository, engine,
                 new OutboxWriter(repository, outbox), outbox,
                 new ControlPublisher(runtime, Duration.ofMinutes(5), TraceSink.disabled()),
                 new ColdStorageBypass(coldStore), TraceSink.disabled(), turnLog);

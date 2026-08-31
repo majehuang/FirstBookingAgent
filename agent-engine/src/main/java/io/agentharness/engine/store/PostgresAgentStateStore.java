@@ -26,11 +26,19 @@ import java.util.Set;
  * 调用方必须把整条 agent 流 {@code subscribeOn(boundedElastic)}，
  * 否则会占死事件循环 —— 症状是全 pod 所有 session 一起卡（INV-7）。
  *
- * <p>其二，<b>这个接口表达不了 CAS</b>：{@code save} 不接收版本号，
- * 所以没有办法在接口语义内做"读到 v3 才允许写成 v4"。这里的写入是 LWW，
- * {@code version} 列只做递增计数与排查用。
- * 真正防双跑的是 lease（INV-3），不是状态存储。
- * 需要在存储层再加一道时用 {@link #saveIfVersion}，它不在上游接口里。
+ * <p>其二，<b>它不是写者仲裁器，这是刻意的</b>（2026-08-28 冻结）。
+ * {@code save} 不接收版本号，写入就是普通的 LWW ——
+ * 而我们<b>不需要</b>它支持版本、CAS 或冲突重试。
+ *
+ * <p><b>同一 session 的 Worker 不双跑，唯一靠 lease（INV-3）。</b>
+ * 牌子保证同时只有一个 Worker 在写；牌子丢了之后由 {@code LeaseFence} 立刻阻断写入。
+ * 存储层不参与锁定、选主或 fencing。
+ *
+ * <p>{@code version} 列保留，但它<b>只用于计数、迁移与排障</b>，
+ * <b>不能被当作并发控制</b>。曾经有过一个 {@code saveIfVersion}（真 CAS、但没有任何调用者），
+ * 已随这次冻结删除 —— 一个摆在那里、名字又正好像"防双跑"的方法，
+ * 迟早会有人拿它当第二道防线，然后开始怀疑 lease 是不是可以放松。
+ * 那正是风险登记册 R-9 说的事。
  */
 public final class PostgresAgentStateStore implements AgentStateStore {
 
@@ -42,12 +50,6 @@ public final class PostgresAgentStateStore implements AgentStateStore {
                     is_list = EXCLUDED.is_list,
                     version = agent_state.version + 1,
                     updated_at = now()
-            """;
-
-    private static final String CAS_SQL = """
-            UPDATE agent_state
-               SET payload = ?::jsonb, is_list = ?, version = version + 1, updated_at = now()
-             WHERE user_id = ? AND session_id = ? AND state_key = ? AND version = ?
             """;
 
     private static final String SELECT_SQL = """
@@ -84,15 +86,6 @@ public final class PostgresAgentStateStore implements AgentStateStore {
         jdbc.update(UPSERT_SQL, userId, sessionId, key, codec().toJson(states), true);
     }
 
-    /**
-     * 带版本校验的写入。不在上游接口里，留给 P3 的双跑防护用。
-     *
-     * @return 是否写入成功；false 表示版本已被其它写入者推进
-     */
-    public boolean saveIfVersion(String userId, String sessionId, String key, State state, long expectedVersion) {
-        return jdbc.update(CAS_SQL, codec().toJson(state), false,
-                userId, sessionId, key, expectedVersion) == 1;
-    }
 
     @Override
     public <T extends State> Optional<T> get(String userId, String sessionId, String key, Class<T> type) {

@@ -67,10 +67,11 @@ class WorkerTraceIntegrationTest {
         OutboxStream outbox = new OutboxStream(runtime, 10_000L, sink);
         EventLogRepository coldStore = (s, replyId, type, payload) -> {
         };
-        return new SessionWorker(runtime, repository, new ScriptedTurnEngine(),
+        return new SessionWorker(runtime, TestLeases.control(runtime), repository,
+                new ScriptedTurnEngine(),
                 new OutboxWriter(repository, outbox), outbox,
                 new ControlPublisher(runtime, Duration.ofMinutes(5), sink),
-                new ColdStorageBypass(coldStore), sink);
+                new ColdStorageBypass(coldStore), sink, TurnLog.disabled());
     }
 
     private void deliver(String text) {
@@ -154,7 +155,8 @@ class WorkerTraceIntegrationTest {
         deliver("你好");
         InMemoryMessageRepository repository = new InMemoryMessageRepository();
         OutboxStream outbox = new OutboxStream(runtime);
-        SessionWorker silent = new SessionWorker(runtime, repository, new ScriptedTurnEngine(),
+        SessionWorker silent = new SessionWorker(runtime, TestLeases.control(runtime), repository,
+                new ScriptedTurnEngine(),
                 new OutboxWriter(repository, outbox), outbox, new ControlPublisher(runtime),
                 new ColdStorageBypass((s, r, t, p) -> {
                 }));

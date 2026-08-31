@@ -710,7 +710,7 @@ return cjson.encode(obj)</pre>
               <tr><td>任务控制模块</td><td>—</td><td>简易消费循环</td><td>—</td><td><b>消费组 / 心跳 / 回收 / 清理 / 上限</b></td><td>—</td><td>—</td><td>并发上限 B</td></tr>
               <tr><td>Worker 模块</td><td>—</td><td>drain + outbox 写入</td><td>适配层接入</td><td>lease 续期 / 双游标 / 幂等</td><td>turnStartId 保护</td><td>ctrl 分流 / 打断</td><td>429 降级</td></tr>
               <tr><td>工具模块</td><td>—</td><td>—</td><td><b>业务工具 + 表达工具 + middleware</b></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-              <tr><td>Agent 装配</td><td>单例 + store</td><td>—</td><td>—</td><td>CAS</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td>Agent 装配</td><td>单例 + store</td><td>—</td><td>—</td><td>共享 PG 状态（LWW）</td><td>—</td><td>—</td><td>—</td></tr>
               <tr><td>Skill 仓库</td><td colspan="7">∥ 并行轨道，P1 之后任意时间</td></tr>
             </tbody>
           </table>
@@ -847,13 +847,14 @@ return cjson.encode(obj)</pre>
             <li>lease 抢占（<code>SET NX PX</code>，值每次唯一）+ 每 10s 续租 + <b>续租失败立即中止 turn 并停止写 outbox</b></li>
             <li>认领数量 = 空闲槽位数（认领即持有，多领等于制造饥饿）</li>
             <li>两个游标 + <code>instructionId</code> 幂等（对照上下文最后一条 USER 消息去重）</li>
-            <li><code>AgentStateStore</code> 走支持 CAS 的后端，冲突失败重试</li>
+            <li><code>AgentStateStore</code> 使用共享 PostgreSQL 并允许 LWW；不要求版本/CAS。<b>防双跑只由 lease（INV-3）保证</b>（2026-08-28 决议）</li>
           </ul>
         </div>
         <div class="block accept">
           <span class="lbl">验收</span>
           <p>混沌测试：持续对话下随机 kill pod、注入 Redis 抖动、模拟长 GC。要求
-          <b>无消息丢失、无重复回复、无 session 永久卡死</b>。优雅停机时用户无感知，硬杀时恢复时延 ≈ lease TTL。</p>
+          <b>无消息丢失、无重复回复、无 session 永久卡死</b>。优雅停机时用户无感知；硬杀恢复时延上界 90 秒
+          （<code>MIN-IDLE</code> 60 秒 + 最长一个 30 秒回收周期）。</p>
         </div>
         <p class="risk"><span class="lbl" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em">风险 · </span>
           <a class="inv" href="#inv1">INV-1</a> <a class="inv" href="#inv2">INV-2</a>

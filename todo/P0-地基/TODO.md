@@ -82,8 +82,10 @@
 - [x] 记录 RemoteFilesystem 只代理特定路径前缀的边界；shell 与 filesystem 工具默认关闭。
 
 **保留 PostgreSQL 的理由**：上游 `AgentStateStore` 是阻塞接口，天然贴合 JDBC；
-`version` 列为乐观锁留位；上游只有 InMemory / JsonFile 两个实现，
+上游只有 InMemory / JsonFile 两个实现，
 无论选哪个后端都得自研 —— 那就选更合适的那个。
+**2026-08-28 已确认不要求版本/CAS**，状态写入允许 LWW，防双跑只由 lease（INV-3）保证；
+`version` 列若保留，仅用于计数、迁移或排障。
 代价是每轮推理有阻塞 JDBC 落在响应式链路上，整条 agent 流必须 `subscribeOn(boundedElastic)`（INV-7）。
 
 **修掉的一个真 bug**：「上一轮未结束」的检查排在幂等检查之前。

@@ -8,11 +8,11 @@ import io.agentharness.protocol.UserInstruction;
 import io.agentharness.redis.ReadyToken;
 import io.agentharness.redis.RedisException;
 import io.agentharness.redis.RedisRuntime;
+import io.agentharness.redis.StreamLimits;
 import io.agentharness.redis.StreamPayload;
 import io.agentharness.store.message.MessageRepository;
 import io.agentharness.trace.TraceSink;
 import io.agentharness.trace.TraceStage;
-import io.lettuce.core.XAddArgs;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -45,10 +45,6 @@ import java.util.UUID;
  */
 public final class RedisInstructionPublisher implements InstructionPublisher {
 
-    /** inbox 的裁剪上限。按条数裁剪，精确的按时间裁剪留给 P4。 */
-    private static final long INBOX_MAX_LEN = 10_000L;
-    private static final long READY_MAX_LEN = 100_000L;
-
     private final RedisRuntime runtime;
     private final MessageRepository repository;
     private final TraceSink trace;
@@ -69,8 +65,7 @@ public final class RedisInstructionPublisher implements InstructionPublisher {
         String inboxKey = KeyNamespace.inbox(session.sessionId());
 
         return runtime.commands()
-                .xadd(inboxKey, XAddArgs.Builder.maxlen(INBOX_MAX_LEN).approximateTrimming(),
-                        StreamPayload.of(instruction))
+                .xadd(inboxKey, StreamLimits.inbox(), StreamPayload.of(instruction))
                 .onErrorMap(e -> new RedisException("写 inbox 失败，指令未被接受", e))
 
                 // 追踪落在 XADD 之后：写成功了才算"进了 inbox"。
@@ -81,8 +76,7 @@ public final class RedisInstructionPublisher implements InstructionPublisher {
                 // ② ready 在后。这一步失败时 inbox 里已经有指令了，
                 //    但没有唤醒令牌 —— 靠客户端带同一个 instructionId 重试来补
                 .then(runtime.commands()
-                        .xadd(KeyNamespace.READY,
-                                XAddArgs.Builder.maxlen(READY_MAX_LEN).approximateTrimming(),
+                        .xadd(KeyNamespace.READY, StreamLimits.ready(),
                                 StreamPayload.of(ReadyToken.of(session)))
                         .onErrorMap(e -> new RedisException("写 ready 失败，未产生唤醒", e)))
 

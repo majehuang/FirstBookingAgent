@@ -323,9 +323,17 @@
             <exclude>io/agentharness/redis/RedisRuntime.class</exclude>
             <exclude>io/agentharness/redis/LeaseGuard.class</exclude>
             <exclude>io/agentharness/redis/Cursors.class</exclude>
+            <!-- 单条 Redis 命令的外壳，没有分支可测；语义由 PelMaintenanceIntegrationTest
+                 在真 Redis 上验证（HBT-002/003），那才是这个类唯一有价值的断言 -->
+            <exclude>io/agentharness/redis/PelHeartbeat.class</exclude>
+            <exclude>io/agentharness/redis/StreamLimits.class</exclude>
             <exclude>io/agentharness/comm/**</exclude>
             <exclude>io/agentharness/task/coldstore/**</exclude>
-            <exclude>io/agentharness/task/dispatch/**</exclude>
+            <!-- dispatch 包原先整包豁免 —— 那时它只有 ReadyDispatcher 一个 IO 外壳。
+                 P3 之后这里住进了参数校验、槽位账本、XINFO 解析这些纯逻辑，
+                 整包豁免就从"排除外壳"变成了"给逻辑开后门"：新加的分支不写测试也不会被发现。
+                 现在只豁免真正的编排外壳，其余进门禁 -->
+            <exclude>io/agentharness/task/dispatch/ReadyDispatcher.class</exclude>
             <exclude>io/agentharness/task/worker/**</exclude>
             <exclude>io/agentharness/task/outbox/OutboxStream.class</exclude>
             <exclude>io/agentharness/task/outbox/OutboxWriter.class</exclude>

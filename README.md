@@ -558,15 +558,15 @@ ctrl 追踪必须带着 Lua 刚生成的水位、outbox 追踪必须带着条目
 | 跨节点打断 | `/stop` 明确报错而不是静默无效 | P5。Worker 还不消费 ctrl 游标 |
 | 超窗历史补齐 | 空窗时从消息表拉取已实现，`turnStartId` 裁剪保护未做 | P4（INV-6） |
 | HTTP 门面 | 无鉴权、无 SSE 线格式 | 接 servlet 时。`Test/P1` 的 API-003/004、SSE-001/003/005/006 依赖它 |
-| AgentState 的 CAS | LWW 写入，`version` 列只做计数 | 上游 `AgentStateStore` 接口不接收版本号，表达不了 CAS。防双跑靠 lease（INV-3） |
 
 ### 与开发规划的偏差
 
-两处，都需要在评审时确认：
+两处实现边界；其中 AgentState 后端与并发语义已于 2026-08-28 定案：
 
 **AgentState 存 PG，不是 Redis。** 规划 B 节把它归在 Redis 一层。
 改成 PG 的理由是上游 `AgentStateStore` 是**阻塞接口**（`void save` / `Optional get`），
-天然贴合 JDBC；而 `version` 列还能为后续的 CAS 留出位置。
+天然贴合 JDBC。**2026-08-28 已确认不引入 AgentState CAS**：防双跑只由 lease（INV-3）保证，
+`version` 列只用于计数、迁移或排障，不是并发控制接口。
 Redis 因此只承担队列与协调结构。已写回规划 B 节修订。
 
 代价是：每轮推理会有阻塞 JDBC 调用落在响应式链路上，整条 agent 流必须
@@ -601,7 +601,7 @@ Redis 因此只承担队列与协调结构。已写回规划 B 节修订。
 | `HarnessAgent` 单例 | `io.agentscope.harness.agent.HarnessAgent` |
 | `RedisDistributedStore` | 实现 `io.agentscope.harness.agent.DistributedStore` |
 | workspace 方案 B | `filesystem.spec.RemoteFilesystemSpec` + `filesystem.remote.store.BaseStore` + `IsolationScope` |
-| `AgentStateStore` 走 CAS 后端 | `io.agentscope.core.state.AgentStateStore`（上游只有 InMemory / JsonFile，PG 版已自研） |
+| `AgentStateStore` 走共享持久化 | `io.agentscope.core.state.AgentStateStore`（上游只有 InMemory / JsonFile，PG 版已自研；写入允许 LWW，不要求版本/CAS） |
 | Middleware | `io.agentscope.core.middleware.MiddlewareBase` |
 | `ToolExecutor` 默认 offload | `io.agentscope.core.tool.ToolExecutor` |
 | D4 决定不用的沙箱 | `harness.agent.sandbox.*`、`SandboxSnapshotSpec`、`SandboxExecutionGuard` —— 整条链路不引入 |

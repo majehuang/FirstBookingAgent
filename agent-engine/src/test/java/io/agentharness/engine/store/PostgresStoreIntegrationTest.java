@@ -29,7 +29,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ul>
  *   <li>{@code Msg} 这类带 {@code @JsonTypeInfo} 的多态类型能否原样往返 ——
  *       用错 ObjectMapper 时只有读旧会话才会暴露</li>
- *   <li>{@code putIfVersion} 是不是真的 CAS —— 并发下后写者必须失败而不是覆盖</li>
+ *   <li>{@code putIfVersion}（<b>BaseStore / workspace 记忆</b>）是不是真的 CAS ——
+ *       并发下后写者必须失败而不是覆盖。注意这与 {@code AgentStateStore} 无关：
+ *       后者按 2026-08-28 冻结的契约<b>不做</b>版本控制，防双跑只靠 lease</li>
  * </ul>
  */
 @EnabledIfEnvironmentVariable(named = "AGENT_IT_JDBC_URL", matches = ".+")
@@ -120,23 +122,6 @@ class PostgresStoreIntegrationTest {
 
         stateStore.delete(userId, sessionId);
         assertThat(stateStore.exists(userId, sessionId)).isFalse();
-    }
-
-    @Test
-    @DisplayName("saveIfVersion 是真 CAS —— 版本不匹配时写入失败而不是覆盖")
-    void 状态的条件写入() {
-        Msg first = Msg.builder().id("m-1").role(MsgRole.USER).textContent("v0").build();
-        stateStore.save(userId, sessionId, "cas-key", first);
-
-        Msg second = Msg.builder().id("m-2").role(MsgRole.USER).textContent("v1").build();
-        assertThat(stateStore.saveIfVersion(userId, sessionId, "cas-key", second, 0)).isTrue();
-
-        // 版本已经被推进到 1，再拿 0 去写必须失败
-        Msg stale = Msg.builder().id("m-3").role(MsgRole.USER).textContent("stale").build();
-        assertThat(stateStore.saveIfVersion(userId, sessionId, "cas-key", stale, 0)).isFalse();
-
-        assertThat(stateStore.get(userId, sessionId, "cas-key", Msg.class))
-                .get().extracting(Msg::getTextContent).isEqualTo("v1");
     }
 
     @Test

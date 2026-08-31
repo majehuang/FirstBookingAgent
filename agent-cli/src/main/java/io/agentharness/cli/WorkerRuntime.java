@@ -1,12 +1,20 @@
 package io.agentharness.cli;
 
 import io.agentharness.engine.TurnEngine;
+import io.agentharness.redis.LeaseGuard;
+import io.agentharness.redis.PelHeartbeat;
 import io.agentharness.redis.RedisRuntime;
+import io.agentharness.redis.ScriptRegistry;
+import io.agentharness.redis.StreamLimits;
 import io.agentharness.store.eventlog.PostgresEventLogRepository;
 import io.agentharness.store.jdbc.Jdbc;
 import io.agentharness.store.message.MessageRepository;
 import io.agentharness.task.coldstore.ColdStorageBypass;
+import io.agentharness.task.dispatch.ConsumerName;
 import io.agentharness.task.dispatch.ReadyDispatcher;
+import io.agentharness.task.dispatch.TaskTimings;
+import io.agentharness.task.health.HealthLog;
+import io.agentharness.task.lease.LeaseControl;
 import io.agentharness.task.outbox.OutboxStream;
 import io.agentharness.task.outbox.OutboxWriter;
 import io.agentharness.task.worker.ControlPublisher;
@@ -25,20 +33,21 @@ import java.time.Duration;
  * 迟早会在某个参数上分叉，而分叉的表现是"内嵌能跑、独立起不来"（或者反过来），
  * 查起来要先意识到有两套代码。
  *
- * <p>两种形态的差别只有三个参数，全在 {@link #embedded} 与 {@link #standalone} 里写死：
+ * <p>两种形态的差别全在 {@link #embedded} 与 {@link #standalone} 里写死：
  * <table border="1">
  *   <caption>两种形态</caption>
- *   <tr><th></th><th>consumer 名</th><th>并发</th><th>每轮日志</th></tr>
- *   <tr><td>内嵌</td><td>主机名-pid</td><td>1</td><td>不打</td></tr>
- *   <tr><td>独立</td><td>主机名（可 --consumer 覆盖）</td><td>8</td><td>打到 stdout</td></tr>
+ *   <tr><th></th><th>consumer 名</th><th>并发</th><th>每轮日志</th><th>健康告警</th></tr>
+ *   <tr><td>内嵌</td><td>主机名-pid</td><td>1</td><td>不打</td><td>不打</td></tr>
+ *   <tr><td>独立</td><td>主机名（可 --consumer 覆盖）</td><td>8</td>
+ *       <td>stdout</td><td>stderr</td></tr>
  * </table>
+ *
+ * <p>两种输出都<b>刻意不走 slf4j</b>：{@code agent-cli} 绑的是 {@code slf4j-nop}，
+ * slf4j 的输出会被整个丢掉。要让这些行真的出现在控制台，只能自己写 stream。
  */
 public final class WorkerRuntime implements AutoCloseable {
 
-    /** 与 {@code OutboxStream} / {@code ControlPublisher} 的默认值一致，此处只是为了能传 sink。 */
-    private static final long DEFAULT_OUTBOX_MAX_LEN = 10_000L;
     private static final Duration CONTROL_TTL = Duration.ofHours(12);
-    private static final Duration POLL_INTERVAL = Duration.ofMillis(50);
 
     static final int EMBEDDED_CONCURRENCY = 1;
     static final int STANDALONE_CONCURRENCY = 8;
@@ -64,25 +73,43 @@ public final class WorkerRuntime implements AutoCloseable {
      */
     static WorkerRuntime embedded(RedisRuntime runtime, Jdbc jdbc, MessageRepository repository,
                                   TurnEngine engine, TraceSink trace) {
+        // 内嵌形态两样都关：告警混进滚动区会盖住回复本身
         return start(runtime, jdbc, repository, engine, trace, TurnLog.disabled(),
-                embeddedConsumerName(), EMBEDDED_CONCURRENCY);
+                HealthLog.disabled(), embeddedConsumerName(), EMBEDDED_CONCURRENCY);
     }
 
     /** {@code agent worker}：独立进程，日志打到 stdout。 */
     static WorkerRuntime standalone(RedisRuntime runtime, Jdbc jdbc, MessageRepository repository,
                                     TurnEngine engine, TraceSink trace, String consumerName,
                                     int concurrency) {
+        // 独立进程：每轮一行走 stdout（可 diff），健康告警走 stderr（不污染那份产物）
         return start(runtime, jdbc, repository, engine, trace, TurnLog.toStdout(),
-                consumerName, concurrency);
+                HealthLog.toStderr(), consumerName, concurrency);
     }
 
     private static WorkerRuntime start(RedisRuntime runtime, Jdbc jdbc,
                                        MessageRepository repository, TurnEngine engine,
-                                       TraceSink trace, TurnLog turnLog,
-                                       String consumerName, int concurrency) {
-        OutboxStream outbox = new OutboxStream(runtime, DEFAULT_OUTBOX_MAX_LEN, trace);
+                                       TraceSink trace, TurnLog turnLog, HealthLog healthLog,
+                                       String rawConsumerName, int concurrency) {
+        ConsumerName consumerName = ConsumerName.of(rawConsumerName);
+        TaskTimings timings = TaskTimings.production();
+
+        // 摘牌脚本必须在<b>启动时</b>加载（LUA-002）。放到首次使用时加载的话，
+        // 加载失败会表现为"第一个 turn 收尾失败"，而那时候已经有用户在等回复了
+        ScriptRegistry scripts = new ScriptRegistry(runtime);
+        LeaseGuard leases = new LeaseGuard(runtime, scripts);
+        leases.loadScripts().block();
+
+        // 同一个 LeaseControl 传给 Worker 与调度器 —— 两者必须共享 ActiveTurns，
+        // 否则停机时调度器会在一张空表里找在飞 turn，一个都交接不到且毫无报错
+        LeaseControl leaseControl = new LeaseControl(leases,
+                new PelHeartbeat(runtime, ReadyDispatcher.GROUP, consumerName.value()),
+                timings);
+
+        OutboxStream outbox = new OutboxStream(runtime, StreamLimits.OUTBOX_MAX_LEN, trace);
         SessionWorker worker = new SessionWorker(
                 runtime,
+                leaseControl,
                 repository,
                 engine,
                 new OutboxWriter(repository, outbox),
@@ -93,9 +120,9 @@ public final class WorkerRuntime implements AutoCloseable {
                 turnLog);
 
         ReadyDispatcher dispatcher = new ReadyDispatcher(
-                runtime, worker, consumerName, concurrency, POLL_INTERVAL);
+                runtime, worker, consumerName, concurrency, leaseControl, healthLog);
         dispatcher.start().block();
-        return new WorkerRuntime(dispatcher, consumerName, concurrency);
+        return new WorkerRuntime(dispatcher, consumerName.value(), concurrency);
     }
 
     String consumerName() {
