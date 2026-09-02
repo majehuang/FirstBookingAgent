@@ -406,7 +406,9 @@ public final class SessionWorker {
                         // 原本只能靠 blockId 的 scripted-N 前缀去认，太隐晦
                         + " engine=" + engine.engineName());
 
-        return outbox.publish(session, userMessage)
+        // 第一条走 publishTurnStart：登记本 turn 的裁剪下限，
+        // 此后到收尾为止 outbox 不会裁掉本 turn 的任何条目（INV-6）
+        return outbox.publishTurnStart(session, userMessage)
                 .then(control.publish(session,
                         ControlFrame.idle().withTurnStarted(replyId).withPhase(TurnPhase.THINKING)))
                 .thenMany(streamTurn(session, replyId, instruction.text(), stats, fence))
@@ -427,7 +429,10 @@ public final class SessionWorker {
                         turnLog.turnFinished(stats.done(session, replyId, engine.engineName()));
                     }
                 })
-                .onErrorResume(error -> failTurn(session, replyId, stats, fence, error));
+                .onErrorResume(error -> failTurn(session, replyId, stats, fence, error))
+                // 撤保护放 doFinally：失败路径还要往 outbox 写 ERROR 消息（failTurn），
+                // 提前撤掉的话那条收尾消息就落在无保护的窗口里
+                .doFinally(signal -> outbox.endTurn(session));
     }
 
     private Flux<ClientMessage> streamTurn(SessionRef session, String replyId, String text,

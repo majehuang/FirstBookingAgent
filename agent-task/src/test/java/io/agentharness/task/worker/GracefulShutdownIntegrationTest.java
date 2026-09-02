@@ -101,7 +101,7 @@ class GracefulShutdownIntegrationTest {
         leaseControl = new LeaseControl(leases, null, TIMINGS, new ActiveTurns());
 
         InMemoryMessageRepository repository = new InMemoryMessageRepository();
-        OutboxStream outbox = new OutboxStream(runtime, 10_000L, TraceSink.disabled());
+        OutboxStream outbox = new OutboxStream(runtime);
         EventLogRepository coldStore = (s, replyId, type, payload) -> {
         };
         SessionWorker worker = new SessionWorker(runtime, leaseControl, repository,

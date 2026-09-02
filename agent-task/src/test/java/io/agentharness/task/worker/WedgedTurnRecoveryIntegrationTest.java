@@ -132,7 +132,7 @@ class WedgedTurnRecoveryIntegrationTest {
         leases.loadScripts().block(TIMEOUT);
 
         InMemoryMessageRepository repository = new InMemoryMessageRepository();
-        OutboxStream outbox = new OutboxStream(runtime, 10_000L, TraceSink.disabled());
+        OutboxStream outbox = new OutboxStream(runtime);
         EventLogRepository coldStore = (s, replyId, type, payload) -> {
         };
         return new SessionWorker(runtime,

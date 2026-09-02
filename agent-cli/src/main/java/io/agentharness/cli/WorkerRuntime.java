@@ -106,7 +106,7 @@ public final class WorkerRuntime implements AutoCloseable {
                 new PelHeartbeat(runtime, ReadyDispatcher.GROUP, consumerName.value()),
                 timings);
 
-        OutboxStream outbox = new OutboxStream(runtime, StreamLimits.OUTBOX_MAX_LEN, trace);
+        OutboxStream outbox = new OutboxStream(runtime, StreamLimits.OUTBOX_WINDOW, trace);
         SessionWorker worker = new SessionWorker(
                 runtime,
                 leaseControl,

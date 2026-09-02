@@ -33,11 +33,14 @@ public final class StreamLimits {
     public static final long INBOX_MAX_LEN = 10_000L;
 
     /**
-     * 单 session 的客户端消息批。
+     * 单 session 的客户端消息批（outbox）的保留窗口 —— <b>按时间，不按条数</b>（P4-4）。
      *
-     * <p>保留窗口 5–10 分钟由 P4 的 {@code turnStartId} 保护接管，这里只是条数兜底。
+     * <p>outbox 只是重连缓冲，长期历史由消息表兜底；窗口取计划给的 5–10 分钟区间的上沿。
+     * turn 进行中的条目不受窗口约束（INV-6），保护逻辑在
+     * {@code agent-task} 的 {@code OutboxRetention} —— 只有持牌写入方知道 turn 的边界，
+     * 所以窗口常量放这里、保护不放这里。
      */
-    public static final long OUTBOX_MAX_LEN = 10_000L;
+    public static final java.time.Duration OUTBOX_WINDOW = java.time.Duration.ofMinutes(10);
 
     private StreamLimits() {
     }

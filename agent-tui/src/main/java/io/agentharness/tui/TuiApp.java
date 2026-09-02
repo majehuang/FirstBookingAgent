@@ -18,6 +18,7 @@ import io.agentharness.tui.render.RenderedLine;
 import io.agentharness.tui.render.StatusLine;
 import io.agentharness.tui.render.Transcript;
 import io.agentharness.tui.state.ConnectionState;
+import io.agentharness.tui.state.ReconnectPolicy;
 import io.agentharness.tui.state.SeqRule;
 import io.agentharness.tui.state.SeqVerdict;
 import io.agentharness.tui.state.UiEvent;
@@ -39,6 +40,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -67,6 +70,9 @@ public final class TuiApp implements AutoCloseable {
     private final AtomicReference<Transcript> transcript = new AtomicReference<>(Transcript.empty());
     private final AtomicReference<Disposable> streams = new AtomicReference<>(Disposables.none());
     private final AtomicReference<TurnGate> turnGate = new AtomicReference<>();
+    private final AtomicInteger reconnectAttempts = new AtomicInteger();
+    private final AtomicBoolean reconnectPending = new AtomicBoolean();
+    private final AtomicReference<Disposable> reconnectTimer = new AtomicReference<>(Disposables.none());
     private final SlashCommandHandler commands = new SlashCommandHandler(
             SlashCommandHandler.randomSessionIds());
 
@@ -101,6 +107,7 @@ public final class TuiApp implements AutoCloseable {
 
     @Override
     public void close() {
+        reconnectTimer.get().dispose();
         streams.get().dispose();
         renderScheduler.dispose();
         backend.close();
@@ -337,6 +344,11 @@ public final class TuiApp implements AutoCloseable {
 
     private void switchSession(String sessionId) {
         SessionRef next = SessionRef.of(config.session().userId(), sessionId);
+        // 挂起的重连计时器指向旧会话，必须先取消 —— 否则它会在切换之后醒来，
+        // 把新会话刚建好的订阅整个替换掉
+        reconnectTimer.get().dispose();
+        reconnectPending.set(false);
+        reconnectAttempts.set(0);
         streams.get().dispose();
         transcript.set(Transcript.empty());
         state.set(UiState.initial(next, backend.name()));
@@ -354,6 +366,16 @@ public final class TuiApp implements AutoCloseable {
         // 顺序颠倒的话，历史会打在实时消息之后，看起来就像消息乱序了。
         backend.history().ifPresent(history -> rebuildFromHistory(history, session, 0));
 
+        attachStreams(session);
+    }
+
+    /**
+     * 订阅两条后端流。首次打开与断线重连共用 —— 重连<b>不</b>预拉历史：
+     * outbox 重放会把窗口内的消息重新送一遍，本地水位让重复变成 DISCARD、
+     * 缺失变成 APPEND；离线超过窗口时首帧序号跳变，走 GAP 路径
+     * （清空 → 拉取 → 重建）补齐。<b>与空窗恢复是同一条代码路径，不是两个分支。</b>
+     */
+    private void attachStreams(SessionRef session) {
         Disposable messages = backend.messages(session)
                 .publishOn(renderScheduler)
                 .concatMap(message -> Flux.just(message).doOnNext(this::onMessage))
@@ -372,6 +394,7 @@ public final class TuiApp implements AutoCloseable {
     }
 
     private void onMessage(ClientMessage message) {
+        markTraffic();
         UiState before = state.get();
         SeqVerdict verdict = SeqRule.judge(before.lastMsgSeq(), message.msgSeq());
 
@@ -437,6 +460,7 @@ public final class TuiApp implements AutoCloseable {
     }
 
     private void onControl(ControlFrame frame) {
+        markTraffic();
         updateState(new UiEvent.ControlArrived(frame, Instant.now()));
 
         // turn 结束时把未完成的尾巴落地。
@@ -458,10 +482,59 @@ public final class TuiApp implements AutoCloseable {
         refreshStatus();
     }
 
+    /**
+     * 流断了：报一声，然后按退避自动重连（P4-6 / G4）。
+     *
+     * <p>两条流（消息、控制）各自可能报错，几乎同时断时这里会进来两次 ——
+     * {@code reconnectPending} 保证只挂一个计时器；报错行也只在第一次打，
+     * 之后的重试失败静默退避，否则重连不上时终端会被刷屏。
+     */
     private void onStreamError(Throwable error) {
         openGate();
+        boolean firstNotice = state.get().connection() == ConnectionState.CONNECTED
+                || state.get().connection() == ConnectionState.CONNECTING;
         updateState(new UiEvent.ConnectionChanged(ConnectionState.DISCONNECTED, Instant.now()));
-        ui.printLines(List.of(RenderedLine.of(LineKind.ERROR, "✗ 连接中断：" + rootMessage(error))));
+        if (firstNotice) {
+            ui.printLines(List.of(RenderedLine.of(LineKind.ERROR,
+                    "✗ 连接中断：" + rootMessage(error))));
+        }
+        scheduleReconnect();
+        refreshStatus();
+    }
+
+    private void scheduleReconnect() {
+        if (!reconnectPending.compareAndSet(false, true)) {
+            return;
+        }
+        int attempt = reconnectAttempts.incrementAndGet();
+        Duration delay = ReconnectPolicy.delayFor(attempt);
+        updateState(new UiEvent.ConnectionChanged(ConnectionState.RECONNECTING, Instant.now()));
+        if (attempt == 1) {
+            ui.printLines(List.of(RenderedLine.hint(
+                    "将自动重连；期间的消息不会丢（服务端重放 + 消息表兜底）")));
+        }
+        refreshStatus();
+
+        reconnectTimer.set(Mono.delay(delay, renderScheduler).subscribe(tick -> {
+            reconnectPending.set(false);
+            // 先拆干净再重订：断流时组合订阅里可能还有半条活着（另一条流 + 状态计时器），
+            // 不拆的话每次重连都多出一套并行订阅，消息被渲染两遍
+            streams.get().dispose();
+            attachStreams(state.get().session());
+        }));
+    }
+
+    /**
+     * 任何一帧到达都证明连接活着 —— 控制流建连即下发快照，所以重连成功后
+     * 这里必然很快被叫到，不需要单独的"连上了"信号。
+     */
+    private void markTraffic() {
+        if (reconnectAttempts.get() == 0) {
+            return;
+        }
+        reconnectAttempts.set(0);
+        updateState(new UiEvent.ConnectionChanged(ConnectionState.CONNECTED, Instant.now()));
+        ui.printLines(List.of(RenderedLine.hint("· 已重新连接")));
         refreshStatus();
     }
 

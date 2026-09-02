@@ -188,7 +188,7 @@ class MultiWorkerIntegrationTest {
         LeaseControl leaseControl = new LeaseControl(leases,
                 new PelHeartbeat(runtime, ReadyDispatcher.GROUP, consumer.value()), TIMINGS);
 
-        OutboxStream outbox = new OutboxStream(runtime, StreamLimits.OUTBOX_MAX_LEN,
+        OutboxStream outbox = new OutboxStream(runtime, StreamLimits.OUTBOX_WINDOW,
                 TraceSink.disabled());
         EventLogRepository coldStore = (s, replyId, type, payload) -> {
         };

@@ -109,7 +109,7 @@ class OutboxBackpressureTest {
     void 慢落库下不丢消息且不报错() {
         int drafts = 200;
         RecordingRepository repository = new RecordingRepository(SLOW_WRITE);
-        OutboxStream outbox = new OutboxStream(runtime, 10_000L, TraceSink.disabled());
+        OutboxStream outbox = new OutboxStream(runtime);
         OutboxWriter writer = new OutboxWriter(repository, outbox, 64, WINDOW);
 
         List<ClientMessage> written = writer

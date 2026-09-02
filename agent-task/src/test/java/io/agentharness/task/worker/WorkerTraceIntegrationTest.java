@@ -10,6 +10,7 @@ import io.agentharness.redis.RedisRuntime;
 import io.agentharness.redis.StreamPayload;
 import io.agentharness.store.eventlog.EventLogRepository;
 import io.agentharness.task.coldstore.ColdStorageBypass;
+import io.agentharness.task.outbox.OutboxRetention;
 import io.agentharness.task.outbox.OutboxStream;
 import io.agentharness.task.outbox.OutboxWriter;
 import io.agentharness.trace.TraceSink;
@@ -64,7 +65,7 @@ class WorkerTraceIntegrationTest {
     /** 装一个不碰数据库的 worker：脚本引擎 + 内存消息表 + 真 Redis。 */
     private SessionWorker worker(TraceSink sink) {
         InMemoryMessageRepository repository = new InMemoryMessageRepository();
-        OutboxStream outbox = new OutboxStream(runtime, 10_000L, sink);
+        OutboxStream outbox = new OutboxStream(runtime, OutboxRetention.DEFAULT_WINDOW, sink);
         EventLogRepository coldStore = (s, replyId, type, payload) -> {
         };
         return new SessionWorker(runtime, TestLeases.control(runtime), repository,

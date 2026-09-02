@@ -117,7 +117,8 @@ class RedisPrimitivesTest {
     void 裁剪上限集中定义() {
         assertThat(StreamLimits.READY_MAX_LEN).isEqualTo(100_000L);
         assertThat(StreamLimits.INBOX_MAX_LEN).isEqualTo(10_000L);
-        assertThat(StreamLimits.OUTBOX_MAX_LEN).isEqualTo(10_000L);
+        // outbox 按时间窗裁剪（P4-4），窗口取计划区间 5–10 分钟的上沿
+        assertThat(StreamLimits.OUTBOX_WINDOW).isEqualTo(java.time.Duration.ofMinutes(10));
 
         assertThat(StreamLimits.ready()).isNotNull();
         assertThat(StreamLimits.inbox()).isNotNull();

@@ -71,7 +71,7 @@ class SessionWorkerBehaviourTest {
 
     /** 一个 worker 实例，服务所有 session —— 引擎是无状态的，没有实例缓存那一层。 */
     private SessionWorker worker() {
-        OutboxStream outbox = new OutboxStream(runtime, 10_000L, TraceSink.disabled());
+        OutboxStream outbox = new OutboxStream(runtime);
         EventLogRepository coldStore = (s, replyId, type, payload) -> {
         };
         return new SessionWorker(runtime, TestLeases.control(runtime), repository, engine,
